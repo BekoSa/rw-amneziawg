@@ -53,6 +53,16 @@ def init_pki(ca_dir: Path, controller_dir: Path, controller_id: str, controller_
         _write(ca_dir / 'ca.crt', ca.public_bytes(serialization.Encoding.PEM), 0o644, 0)
     ca_pem = ca.public_bytes(serialization.Encoding.PEM)
     _write(controller_dir / 'ca.crt', ca_pem, 0o644, controller_uid)
+    expected = f'spiffe://awg/controller/{controller_id}'
+    if (controller_dir / 'controller.crt').exists():
+        # A kept volume from an earlier (e.g. interrupted) install may hold a certificate for another
+        # Controller ID; nodes enrolled with the current ID would then reject this Controller.
+        current = x509.load_pem_x509_certificate((controller_dir / 'controller.crt').read_bytes())
+        uris = current.extensions.get_extension_for_class(x509.SubjectAlternativeName).value \
+            .get_values_for_type(x509.UniformResourceIdentifier)
+        if uris != [expected]:
+            print(f'Controller certificate was issued for {uris}; re-issuing it for {expected}')
+            (controller_dir / 'controller.key').unlink(missing_ok=True)
     if not (controller_dir / 'controller.key').exists():
         key = ec.generate_private_key(ec.SECP256R1())
         cert = (x509.CertificateBuilder()

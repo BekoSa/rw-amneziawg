@@ -187,3 +187,22 @@ async def test_new_profile_takes_the_port_published_by_the_node(app):
         await pilot.press('n')
         await pilot.pause()
         assert app.screen.query_one('#port', Input).value == '43210', 'single node: its published port'
+
+
+
+def test_init_pki_reissues_controller_certificate_for_a_new_controller_id(tmp_path, monkeypatch):
+    import os
+    from cryptography import x509
+    from awg_tui import setup
+    monkeypatch.setattr(os, 'fchown', lambda *a: None)  # tests run unprivileged
+    ca, ctl = tmp_path / 'ca', tmp_path / 'ctl'
+    ca.mkdir(); ctl.mkdir()
+    def uris():
+        cert = x509.load_pem_x509_certificate((ctl / 'controller.crt').read_bytes())
+        return cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(
+            x509.UniformResourceIdentifier)
+    setup.init_pki(ca, ctl, '00000000-0000-4000-8000-000000000001', controller_uid=os.getuid())
+    first_ca = (ca / 'ca.crt').read_bytes()
+    setup.init_pki(ca, ctl, '00000000-0000-4000-8000-000000000002', controller_uid=os.getuid())
+    assert uris() == ['spiffe://awg/controller/00000000-0000-4000-8000-000000000002']
+    assert (ca / 'ca.crt').read_bytes() == first_ca, 'the CA (and every enrolled node) is kept'

@@ -144,3 +144,24 @@ def test_quit_closes_http_client_on_the_app_loop():
         await pilot.press('q')
     AWGApp(api, refresh_seconds=3600).run(headless=True, auto_pilot=quit_after_load)
     assert api.http.is_closed
+
+
+
+@pytest.mark.asyncio
+async def test_register_already_installed_node_by_id(app):
+    from textual.widgets import Button, Input
+    async with app.run_test(size=(140, 44)) as pilot:
+        await pilot.pause()
+        app.query_one('#tabs').active = 'nodes'
+        await pilot.pause()
+        await pilot.press('n')
+        await pilot.pause()
+        screen = app.screen
+        screen.query_one('#name', Input).value = 'de-2'
+        screen.query_one('#address', Input).value = '203.0.113.5'
+        screen.query_one('#node-id', Input).value = '00000000-0000-4000-8000-0000000000cc'
+        screen.query_one('#register', Button).press()
+        await pilot.pause()
+        body = next(b for m, p, b in app.fake.calls if m == 'POST' and p == 'nodes')
+        assert body['node_id'] == '00000000-0000-4000-8000-0000000000cc'
+        assert body['management_url'] == 'https://203.0.113.5:8443'

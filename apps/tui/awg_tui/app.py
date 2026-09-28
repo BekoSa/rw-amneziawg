@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from textual import on, work
 from textual.app import App, ComposeResult
@@ -233,11 +233,13 @@ class NodeKeyScreen(ModalScreen[None]):
                     yield field('Порт управления (TCP)', Input('8443', id='port'))
                 yield field('Команда и ключ для VPN-сервера (выделите мышью, чтобы скопировать)',
                             TextArea('Нажмите «Выпустить ключ ноды».', read_only=True, id='command'))
+                yield field('ID ноды — заполняется при выпуске ключа; для уже установленной ноды его печатает install-node.sh',
+                            Input(placeholder='00000000-0000-0000-0000-000000000000', id='node-id'))
             yield Static('Ключ показывается один раз и нигде не хранится.', id='status')
             with Horizontal(classes='buttons'):
                 yield Button('Закрыть', id='close')
                 yield Button('Выпустить ключ ноды', id='issue', variant='primary')
-                yield Button('Нода установлена — подключить', id='register', variant='success', disabled=True)
+                yield Button('Нода установлена — подключить', id='register', variant='success')
 
     def status(self, text: str):
         self.query_one('#status', Static).update(text)
@@ -260,18 +262,24 @@ class NodeKeyScreen(ModalScreen[None]):
         self.query_one('#command', TextArea).text = (
             '# На VPN-сервере, из каталога проекта, выполните и вставьте ключ, когда установщик спросит:\n'
             'sudo ./install-node.sh --udp-ports 51820\n\n# Ключ ноды:\n' + bundle + '\n')
-        self.query_one('#register', Button).disabled = False
-        self.status('Скопируйте команду (выделите мышью). Ключ ноды показывается один раз и нигде не хранится.')
+        self.query_one('#node-id', Input).value = str(self.node_id)
+        self.status('Скопируйте команду и ключ (выделите мышью). Ключ показывается один раз и нигде не хранится; '
+                    'после установки нажмите «Подключить» (окно можно закрыть — ID ноды печатает установщик).')
 
     @on(Button.Pressed, '#register')
     async def register(self):
+        try:
+            node_id = str(UUID(self.query_one('#node-id', Input).value.strip()))
+        except ValueError:
+            self.status('[red]Укажите ID ноды[/] — его выводит install-node.sh («Node … is running»).')
+            return
         name = self.query_one('#name', Input).value.strip() or 'awg-node'
         address = self.query_one('#address', Input).value.strip()
         port = self.query_one('#port', Input).value.strip()
         if ':' in address and not address.startswith('['):
             address = f'[{address}]'  # IPv6 literal in a URL
         try:
-            await self.api.register_node({'node_id': str(self.node_id), 'name': name,
+            await self.api.register_node({'node_id': node_id, 'name': name,
                                           'management_url': f'https://{address}:{int(port)}', 'enabled': True})
         except (ValueError, APIError) as error:
             self.status(f'[red]Нода не подключена:[/] {error}. Проверьте, что Agent запущен и порт доступен.')

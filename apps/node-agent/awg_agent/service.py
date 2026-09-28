@@ -19,6 +19,25 @@ from awg_contracts import (ActualDeployment, AgentCapabilities, ApplyRequest, De
 from awg_config import ADAPTER_ID, FEATURES, VERSIONS, compile_uapi
 
 
+def listen_ports() -> list[int]:
+    """AWG_LISTEN_PORTS from the node installer: "51820", "51820-51822" or a comma list; empty = any."""
+    ports = set()
+    for item in os.environ.get('AWG_LISTEN_PORTS', '').split(','):
+        item = item.strip()
+        if not item:
+            continue
+        low, _, high = item.partition('-')
+        first, last = int(low), int(high or low)
+        if not 1 <= first <= last <= 65535 or last - first > 1023:
+            raise ValueError('invalid AWG_LISTEN_PORTS')
+        ports.update(range(first, last + 1))
+    return sorted(ports)
+
+
+def format_ports(ports: list[int]) -> str:
+    return f'{ports[0]}-{ports[-1]}' if len(ports) > 1 and ports[-1] - ports[0] == len(ports) - 1 else ', '.join(map(str, ports))
+
+
 class AgentService:
     def __init__(self, directory: Path, node_id: UUID, runtime):
         self.directory = Path(directory)
@@ -48,7 +67,7 @@ class AgentService:
         version = '0.1.0 (' + os.environ.get('AWG_RUNTIME_VERSION', 'amneziawg runtime unknown') + ')'
         return AgentCapabilities(node_id=self.node_id, agent_version=version, runtime='userspace',
                                  protocols=[ProtocolCapability(adapter_id=ADAPTER_ID, versions=VERSIONS, features=FEATURES)],
-                                 supports_ipv6=True, supports_atomic_apply=False)
+                                 supports_ipv6=True, supports_atomic_apply=False, listen_ports=listen_ports())
 
     def _load(self, identifier):
         row = self.db.execute('SELECT payload FROM deployments WHERE id=?', (str(identifier),)).fetchone()
@@ -87,6 +106,10 @@ class AgentService:
             if desired.node_id != self.node_id: raise ValueError('wrong node identity')
             if len(desired.peers) > self.capabilities().max_peers: raise ValueError('peer limit exceeded')
             compile_uapi(desired, bytes(32), set())
+            ports = listen_ports()
+            if ports and desired.profile.endpoint.port not in ports:
+                raise ValueError(f'UDP port {desired.profile.endpoint.port} is not open on this node '
+                                 f'(open: {format_ports(ports)}); use one of them or re-run install-node.sh --udp-ports')
             self._check_node_conflicts(desired)
         except ValueError as error:
             issues.append(ValidationIssue(code='INVALID_CONFIGURATION', message=str(error)))

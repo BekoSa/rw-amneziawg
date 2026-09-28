@@ -565,6 +565,16 @@
             "default": true,
             "title": "Supports Atomic Apply",
             "type": "boolean"
+          },
+          "listen_ports": {
+            "items": {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxItems": 1024,
+            "title": "Listen Ports",
+            "type": "array"
           }
         },
         "required": [

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -49,6 +50,18 @@ def when(value) -> str:
         return str(value)
 
 
+def suggest_port(node: dict | None, profiles: list[dict], profile_id: str | None) -> int:
+    """A UDP port for a profile: a free one among the ports the node publishes, else a random high port."""
+    node_id = (node or {}).get('registration', {}).get('node_id')
+    used = {item['draft']['endpoint']['port'] for item in profiles
+            if item['id'] != profile_id and node_id in item['draft'].get('node_ids', [])}
+    published = ((node or {}).get('capabilities') or {}).get('listen_ports') or []
+    if published:
+        return next((port for port in published if port not in used), published[0])
+    rng = secrets.SystemRandom()
+    return next(port for port in iter(lambda: rng.randint(20000, 59999), None) if port not in used)
+
+
 def field(label: str, widget) -> Vertical:
     """A labelled form field: filled inputs stay recognisable (placeholders vanish once typed into)."""
     return Vertical(Label(label), widget, classes='field')
@@ -79,9 +92,12 @@ class ProfileScreen(ModalScreen[bool]):
 
     BINDINGS = [Binding('escape', 'dismiss(False)', 'Закрыть')]
 
-    def __init__(self, api: ControllerAPI, nodes: list[dict], squads: list[dict], profile: dict | None):
+    def __init__(self, api: ControllerAPI, nodes: list[dict], squads: list[dict], profile: dict | None,
+                 profiles: list[dict] | None = None):
         super().__init__()
         self.api, self.nodes, self.squads, self.initial = api, nodes, squads, profile
+        self.profiles = profiles or []
+        self.port_touched = profile is not None  # an existing profile keeps its port
         self.profile_id = (profile or {}).get('profile_id') or str(uuid4())
         self.saved = profile is not None
         self.digest = None
@@ -102,7 +118,10 @@ class ProfileScreen(ModalScreen[bool]):
                 with Horizontal(classes='row endpoint'):
                     yield field('Endpoint — адрес ноды для клиентов', Input(p.get('endpoint', {}).get('host', ''),
                                                                           placeholder='de.example.com', id='host'))
-                    yield field('UDP-порт', Input(str(p.get('endpoint', {}).get('port', 51820)), id='port'))
+                    port = p.get('endpoint', {}).get('port') or suggest_port(
+                        self.node_by_id((p.get('node_ids') or [None])[0]) or (self.nodes[0] if len(self.nodes) == 1 else None),
+                        self.profiles, self.profile_id)
+                    yield field('UDP-порт (открыт на ноде)', Input(str(port), id='port'))
                 with Horizontal(classes='row'):
                     yield field('Пул адресов IPv4', Input(net.get('ipv4_pool', '10.8.0.0/24'), id='pool'))
                     yield field('IP сервера в пуле', Input(net.get('server_ipv4', '10.8.0.1'), id='server'))
@@ -125,6 +144,14 @@ class ProfileScreen(ModalScreen[bool]):
                 yield Button('Сохранить', id='save', variant='primary')
                 yield Button('Проверить', id='validate', disabled=not self.saved)
                 yield Button('Применить', id='apply', variant='success', disabled=True)
+
+    def node_by_id(self, node_id):
+        return next((n for n in self.nodes if n['registration']['node_id'] == node_id), None)
+
+    @on(Input.Changed, '#port')
+    def port_edited(self, event: Input.Changed):
+        if event.input.has_focus:
+            self.port_touched = True
 
     def draft(self) -> dict:
         value = lambda widget_id: self.query_one(f'#{widget_id}', Input).value.strip()
@@ -159,6 +186,8 @@ class ProfileScreen(ModalScreen[bool]):
     @on(Select.Changed, '#version')
     @on(Select.Changed, '#node')
     def select_changed(self, event: Select.Changed):
+        if event.select.id == 'node' and event.value is not Select.NULL and not self.port_touched:
+            self.query_one('#port', Input).value = str(suggest_port(self.node_by_id(event.value), self.profiles, self.profile_id))
         if event.select.has_focus:  # a user choice, not the initial/programmatic value
             self.changed()
             self.status('Черновик изменён: сохраните и проверьте заново.')
@@ -260,8 +289,9 @@ class NodeKeyScreen(ModalScreen[None]):
             return
         # The key is pasted at the installer prompt, never put on a command line (ps, shell history, sudo logs).
         self.query_one('#command', TextArea).text = (
-            '# На VPN-сервере, из каталога проекта, выполните и вставьте ключ, когда установщик спросит:\n'
-            'sudo ./install-node.sh --udp-ports 51820\n\n# Ключ ноды:\n' + bundle + '\n')
+            '# На VPN-сервере, из каталога проекта, выполните и вставьте ключ, когда установщик спросит\n'
+            '# (UDP-порт AmneziaWG выберется случайно; TUI сам подставит его в профиль этой ноды):\n'
+            'sudo ./install-node.sh --image-registry ghcr.io/bekosa/rw-amneziawg\n\n# Ключ ноды:\n' + bundle + '\n')
         self.query_one('#node-id', Input).value = str(self.node_id)
         self.status('Скопируйте команду и ключ (выделите мышью). Ключ показывается один раз и нигде не хранится; '
                     'после установки нажмите «Подключить» (окно можно закрыть — ID ноды печатает установщик).')
@@ -423,7 +453,7 @@ class AWGApp(App):
             if applied:
                 self.notify('Apply принят. Нода получит ревизию; READY появится на вкладке «Ноды».', title='Профиль')
             self.load()
-        await self.push_screen(ProfileScreen(self.api, self.data['nodes'], squads, profile), done)
+        await self.push_screen(ProfileScreen(self.api, self.data['nodes'], squads, profile, self.data['profiles']), done)
 
     async def action_new(self):
         if self.active_tab() == 'nodes':

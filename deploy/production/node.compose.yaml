@@ -14,6 +14,8 @@ services:
       AWG_TLS_CERT: /pki/agent.crt
       AWG_TLS_KEY: /pki/agent.key
       AWG_EGRESS_DENY: ${AWG_EGRESS_DENY:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,169.254.0.0/16}
+      # Same ports as published below: reported to the Controller and enforced by Validate.
+      AWG_LISTEN_PORTS: ${AWG_UDP_PORTS:?run install-node.sh}
     volumes: [agent-state:/var/lib/awg-agent, './pki:/pki:ro']
     tmpfs: [/tmp, /run/amneziawg]
     read_only: true

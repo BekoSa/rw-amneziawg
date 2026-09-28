@@ -10,3 +10,10 @@ def test_default_route_is_not_pool_conflict():
 
 def test_separate_lan_safe():
     assert not conflicts(CONFIG, [{'dst': '192.168.5.0/24', 'dev': 'eth0'}])
+
+
+def test_split_default_routes_of_full_tunnel_vpn_are_not_conflicts():
+    assert not conflicts(CONFIG, [{'dst': '0.0.0.0/2', 'dev': 'throne-tun'}, {'dst': '0.0.0.0/1', 'dev': 'tun0'}])
+
+def test_real_private_network_via_vpn_still_conflicts():
+    assert conflicts(CONFIG, [{'dst': '10.0.0.0/8', 'dev': 'throne-tun'}])

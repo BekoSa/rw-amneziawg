@@ -70,8 +70,11 @@ say 'Node key issued in the TUI container, then install-node.sh'
 SECRET=$(docker compose -f "$EXT/compose.yaml" --env-file "$EXT/.env" --profile tools run --rm -T tui python -c \
   "import os,uuid; from pathlib import Path; from awg_tui.pki import node_bundle; print(node_bundle(Path('/pki-ca'), os.environ['AWG_CONTROLLER_ID'], uuid.uuid4()))")
 printf '%s' "$SECRET" > "$ROOT/node.key"; chmod 600 "$ROOT/node.key"
-AWG_NODE_INTERNAL_NETWORK=true ./install-node.sh --dir "$NODE" --secret-file "$ROOT/node.key" --udp-ports 51830 --management-port 18445 --management-bind 127.0.0.1 --udp-bind 127.0.0.1
+AWG_NODE_INTERNAL_NETWORK=true ./install-node.sh --dir "$NODE" --secret-file "$ROOT/node.key" --management-port 18445 --management-bind 127.0.0.1 --udp-bind 127.0.0.1
 NODE_ID=$(sed -n 's/^AWG_NODE_ID=//p' "$NODE/pki/node.env")
+PORT=$(sed -n 's/^AWG_UDP_PORTS=//p' "$NODE/.env")
+[ "$PORT" -ge 20000 ] && [ "$PORT" -le 59999 ] || fail "install-node.sh did not pick a random high UDP port: $PORT"
+say "install-node.sh picked random UDP port $PORT"
 # Lab only: the Controller reaches the node through the lab network instead of a public address.
 docker network connect "$NET" awg-node-awg-agent-1
 
@@ -86,7 +89,17 @@ async def main():
     node = os.environ['NODE_ID']
     await api.register_node({'node_id': node, 'name': 'installer-node', 'management_url': 'https://awg-node-awg-agent-1:8443'})
     squad = next(s['uuid'] for s in await api.squads() if s['name'] == 'AWG E2E')
-    profile = {'profile_id': str(uuid.uuid4()), 'name': 'Installer | AWG 3.1', 'endpoint': {'host': 'node.example', 'port': 51830},
+    node_view = next(n for n in await api.items('nodes') if n['registration']['node_id'] == node)
+    ports = node_view['capabilities']['listen_ports']
+    assert len(ports) == 1, ports  # the random port published by install-node.sh, reported by the Agent
+    wrong = {'profile_id': str(uuid.uuid4()), 'name': 'Wrong port', 'endpoint': {'host': 'node.example', 'port': ports[0] + 1},
+             'network': {'ipv4_pool': '10.243.0.0/24', 'server_ipv4': '10.243.0.1'},
+             'protocol': {'adapter_id': 'amneziawg-go-v3', 'version': '3.1', 'parameters': random_parameters('3.1')},
+             'access': {'squad_ids': [squad]}, 'node_ids': [node]}
+    await api.save_profile(wrong)
+    assert not (await api.validate_profile(wrong['profile_id']))['valid'], 'a port not open on the node must fail Validate'
+    print('validate rejects a port that is not open on the node')
+    profile = {'profile_id': str(uuid.uuid4()), 'name': 'Installer | AWG 3.1', 'endpoint': {'host': 'node.example', 'port': ports[0]},
                'network': {'ipv4_pool': '10.242.0.0/24', 'server_ipv4': '10.242.0.1'},
                'protocol': {'adapter_id': 'amneziawg-go-v3', 'version': '3.1', 'parameters': random_parameters('3.1')},
                'access': {'squad_ids': [squad]}, 'node_ids': [node]}

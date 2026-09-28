@@ -23,7 +23,10 @@ def conflicts(config, routes):
             if dst == 'default':
                 continue
             other = ipaddress.ip_network(dst, strict=False)
-            if other.prefixlen == 0:
+            # A full-tunnel VPN often splits its default route into /1../7 pieces (0.0.0.0/2, 64.0.0.0/3 …).
+            # Those are defaults, not networks: a Docker bridge's connected /24 is more specific and wins.
+            # Anything /8 or narrower is a real LAN/VPN network and still blocks the lab.
+            if other.prefixlen < (8 if other.version == 4 else 16):
                 continue
             if other.version == pool.version and pool.overlaps(other):
                 errors.append(f'{name} subnet {pool} overlaps host {dev} route {other}')

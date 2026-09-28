@@ -8,7 +8,7 @@ set -eu
 SOURCE_DIR=$(cd "$(dirname "$0")" && pwd)
 DIR=/opt/awg-node
 SECRET_FILE=''
-UDP_PORTS=51820
+UDP_PORTS=''
 MANAGEMENT_PORT=8443
 MANAGEMENT_BIND=0.0.0.0
 REGISTRY=''
@@ -19,13 +19,13 @@ while [ $# -gt 0 ]; do
     case $1 in
         --secret-file) SECRET_FILE=$2; shift 2 ;;
         --dir) DIR=$2; shift 2 ;;
-        --udp-ports) UDP_PORTS=$2; shift 2 ;;              # e.g. 51820 or 51820-51822 (profile ports)
+        --udp-ports) UDP_PORTS=$2; shift 2 ;;              # e.g. 41234 or 41234-41236; default: random free port
         --management-port) MANAGEMENT_PORT=$2; shift 2 ;;
         --management-bind) MANAGEMENT_BIND=$2; shift 2 ;;  # restrict to a private interface if you have one
         --udp-bind) UDP_BIND=$2; shift 2 ;;
         --image-registry) REGISTRY=${2%/}; shift 2 ;;  # CI images, e.g. ghcr.io/bekosa/rw-amneziawg
         --image-tag) IMAGE_TAG=$2; shift 2 ;;
-        *) echo 'Usage: sudo ./install-node.sh [--secret-file FILE] [--udp-ports 51820] [--management-port 8443] [--management-bind IP]'; exit 2 ;;
+        *) echo 'Usage: sudo ./install-node.sh [--secret-file FILE] [--udp-ports PORT|FROM-TO] [--management-port 8443] [--management-bind IP]'; exit 2 ;;
     esac
 done
 
@@ -35,6 +35,23 @@ die() { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
 command -v docker >/dev/null || die 'Docker is required'
 docker compose version >/dev/null 2>&1 || die 'Docker Compose v2 is required'
 [ -c /dev/net/tun ] || die '/dev/net/tun is missing on this server (enable TUN for the VPS in your provider panel)'
+
+random_port() {  # a random free UDP port in 20000-59999: no well-known AWG/WireGuard port to fingerprint
+    tries=0
+    while [ "$tries" -lt 50 ]; do
+        port=$(( $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 40000 + 20000 ))
+        if ! command -v ss >/dev/null || [ -z "$(ss -Hlun "sport = :$port" 2>/dev/null)" ]; then
+            echo "$port"; return
+        fi
+        tries=$((tries + 1))
+    done
+    die 'Could not find a free UDP port; pass --udp-ports'
+}
+if [ -z "$UDP_PORTS" ]; then
+    # Re-runs (updates) keep the published port, so existing profiles and client configs keep working.
+    UDP_PORTS=$(sed -n 's/^AWG_UDP_PORTS=//p' "$DIR/.env" 2>/dev/null | head -1)
+    [ -n "$UDP_PORTS" ] || UDP_PORTS=$(random_port)
+fi
 
 mkdir -p "$DIR/pki"
 chmod 700 "$DIR"
@@ -79,4 +96,4 @@ printf '\n  Node %s is running. Management API: TCP %s (mutual TLS), AmneziaWG: 
 printf '  Docker-published ports bypass UFW. To allow management only from your panel server, e.g.:\n'
 printf '    iptables -I DOCKER-USER -p tcp --dport 8443 ! -s <PANEL_IP> -j DROP\n'
 printf '  or pass --management-bind <private IP>. Then press "Нода установлена — подключить" in the TUI.\n'
-printf '  A profile must use one of the UDP ports above; to add ports re-run with --udp-ports.\n'
+printf '  The TUI fills this UDP port into new profiles of this node; to open more ports re-run with --udp-ports.\n'

@@ -36,8 +36,15 @@ sudo ./install.sh
 
 ```sh
 git clone https://github.com/BekoSa/rw-amneziawg.git /opt/awg-src && cd /opt/awg-src
-sudo ./install-node.sh --udp-ports 51820      # вставьте ключ awgnode1:… по запросу (или --secret-file FILE)
+sudo ./install-node.sh --image-registry ghcr.io/bekosa/rw-amneziawg   # вставьте ключ awgnode1:… по запросу
 ```
+
+UDP-порт AmneziaWG выбирается **случайно** (20000–59999, свободный), чтобы у ваших нод не было
+общего узнаваемого порта; установщик печатает его, Agent сообщает его Controller, и TUI сам подставляет
+его в профили этой ноды. Validate не пропустит профиль с портом, который на ноде не открыт. Свой порт
+или диапазон: `--udp-ports 41234` / `--udp-ports 41234-41236`; повторный запуск (обновление) сохраняет
+прежний порт. Ключ из файла вместо ввода: `--secret-file FILE`; сборка на сервере вместо готового
+образа — без `--image-registry`.
 
 Agent работает рядом с Remnawave Node, в своём контейнере (bridge-сеть, только `NET_ADMIN` и
 `/dev/net/tun`); AmneziaWG, маршруты и nftables живут только в namespace контейнера. Откройте в

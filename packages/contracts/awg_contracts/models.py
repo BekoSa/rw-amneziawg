@@ -119,6 +119,8 @@ class AgentCapabilities(WireModel):
     max_peers: int = Field(default=10000, ge=1)
     supports_ipv6: bool = False
     supports_atomic_apply: bool = True
+    # UDP ports reachable from clients (published by the node installer). Empty: not restricted.
+    listen_ports: list[Port] = Field(default_factory=list, max_length=1024)
 
 
 class PeerSpec(WireModel):

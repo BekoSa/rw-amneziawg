@@ -27,7 +27,8 @@
 
 ## Профиль: Save → Validate → Apply
 
-В редакторе выбираются нода, endpoint, pool, DNS, Internal Squads Remnawave (по именам, из API) и
+UDP-порт подставляется сам — тот, что открыл на ноде `install-node.sh` (случайный); Validate отклоняет порт,
+который на ноде не открыт. В редакторе выбираются нода, endpoint, pool, DNS, Internal Squads Remnawave (по именам, из API) и
 версия AmneziaWG. Новый профиль по умолчанию — **AWG 3.1** со сгенерированными параметрами
 («Сгенерировать параметры» выдаёт новые валидные значения, включая `HeaderProtectionKey`).
 

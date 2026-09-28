@@ -274,3 +274,21 @@ def test_awg31_parameters_compile_and_enforce_header_protection_rules():
     config.profile.protocol.parameters['S4'] = 15
     with pytest.raises(ValueError, match='parameter'):
         compile_uapi(config, b's' * 32, set()), 'AWG 3.1 fields are rejected in an AWG 2 profile'
+
+
+def test_profile_port_must_be_open_on_node(tmp_path, monkeypatch):
+    monkeypatch.setenv('AWG_LISTEN_PORTS', '40000-40002')
+    agent = service(tmp_path)
+    assert agent.capabilities().listen_ports == [40000, 40001, 40002]
+    result = agent.validate(desired())  # profile uses 51820
+    assert not result.valid and '40000-40002' in result.issues[0].message
+    config = desired()
+    config.profile.endpoint.port = 40001
+    assert agent.validate(config).valid
+    monkeypatch.delenv('AWG_LISTEN_PORTS')
+    assert service_any_port_ok(agent)
+    agent.close()
+
+
+def service_any_port_ok(agent):
+    return agent.capabilities().listen_ports == [] and agent.validate(desired()).valid

@@ -165,3 +165,24 @@ async def test_register_already_installed_node_by_id(app):
         body = next(b for m, p, b in app.fake.calls if m == 'POST' and p == 'nodes')
         assert body['node_id'] == '00000000-0000-4000-8000-0000000000cc'
         assert body['management_url'] == 'https://203.0.113.5:8443'
+
+
+def test_suggest_port_uses_node_ports_and_skips_taken():
+    from awg_tui.app import suggest_port
+    node = {'registration': {'node_id': 'n1'}, 'capabilities': {'listen_ports': [41000, 41001]}}
+    taken = [{'id': 'other', 'draft': {'endpoint': {'port': 41000}, 'node_ids': ['n1']}}]
+    assert suggest_port(node, taken, 'new') == 41001
+    assert suggest_port(node, taken, 'other') == 41000, 'editing keeps its own port available'
+    unrestricted = suggest_port({'registration': {'node_id': 'n2'}, 'capabilities': {}}, taken, None)
+    assert 20000 <= unrestricted <= 59999
+
+
+@pytest.mark.asyncio
+async def test_new_profile_takes_the_port_published_by_the_node(app):
+    from textual.widgets import Input
+    app.fake.data['nodes'][0]['capabilities'] = {'agent_version': 't', 'listen_ports': [43210]}
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        await pilot.press('n')
+        await pilot.pause()
+        assert app.screen.query_one('#port', Input).value == '43210', 'single node: its published port'

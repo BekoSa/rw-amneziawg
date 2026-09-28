@@ -5,7 +5,36 @@ from awg_contracts import AgentCapabilities, ActualDeployment, ApplyRequest, Tra
 
 
 class AgentError(RuntimeError):
-    pass
+    """Agent call failed. `reason` is a fixed code safe to show to the operator (no addresses or secrets)."""
+    def __init__(self, message='agent request failed', reason='AGENT_UNAVAILABLE'):
+        super().__init__(message)
+        self.reason = reason
+
+
+def _causes(error):
+    while error is not None:
+        yield error
+        error = error.__cause__ or error.__context__
+
+
+def failure_reason(error: Exception) -> str:
+    """Classify a transport failure so the TUI can say what to check."""
+    if isinstance(error, httpx.TimeoutException):
+        return 'AGENT_TIMEOUT'  # no answer: address, provider firewall, DOCKER-USER rule
+    if isinstance(error, httpx.ConnectError):
+        for cause in _causes(error):
+            if isinstance(cause, ssl.SSLCertVerificationError):
+                return 'AGENT_TLS_UNTRUSTED'  # node certificate not from this installation / other node ID
+            if isinstance(cause, ssl.SSLError):
+                return 'AGENT_TLS_FAILED'
+            if isinstance(cause, ConnectionRefusedError):
+                return 'AGENT_REFUSED'  # host answers, nothing listens on the management port
+        return 'AGENT_UNREACHABLE'
+    if isinstance(error, (httpx.ReadError, httpx.RemoteProtocolError)):
+        return 'AGENT_REJECTED_CONTROLLER'  # connection closed by the Agent: node key from another Controller
+    if isinstance(error, httpx.HTTPStatusError):
+        return 'AGENT_HTTP_ERROR'
+    return 'AGENT_BAD_RESPONSE'
 
 
 class AgentClient:
@@ -31,13 +60,13 @@ class AgentClient:
                 return ActualDeployment(deployment_id=UUID(path.split('/')[-2]))
             response.raise_for_status()
             return model.model_validate(response.json())
-        except (httpx.HTTPError, ValueError):
-            raise AgentError('agent request failed') from None
+        except (httpx.HTTPError, ValueError) as error:
+            raise AgentError('agent request failed', failure_reason(error)) from None
 
     async def capabilities(self, registration):
         value = await self.request(registration, 'GET', '/v1/capabilities', AgentCapabilities)
         if value.node_id != registration.node_id:
-            raise AgentError('agent identity mismatch')
+            raise AgentError('agent identity mismatch', 'AGENT_IDENTITY_MISMATCH')
         return value
 
     async def validate(self, registration, desired):

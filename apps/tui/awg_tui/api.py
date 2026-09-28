@@ -7,6 +7,20 @@ MESSAGES = {401: 'токен администратора отклонён', 404
             422: 'данные не прошли проверку схемы', 503: 'зависимость Controller недоступна (Remnawave или Agent)'}
 
 
+REASONS = {
+    'AGENT_TIMEOUT': 'нода не отвечает: проверьте адрес, порт управления, firewall провайдера и правило DOCKER-USER',
+    'AGENT_UNREACHABLE': 'нода недоступна по сети: проверьте адрес ноды (DNS/IP) и маршрут',
+    'AGENT_REFUSED': 'порт управления закрыт: Agent не запущен или опубликован на другом порту (install-node.sh --management-port)',
+    'AGENT_TLS_UNTRUSTED': 'сертификат ноды не от этой установки или ID ноды не совпадает — выпустите новый ключ',
+    'AGENT_TLS_FAILED': 'ошибка TLS при подключении к ноде',
+    'AGENT_REJECTED_CONTROLLER': 'нода не приняла Controller: её ключ выпущен другой установкой расширения',
+    'AGENT_IDENTITY_MISMATCH': 'по этому адресу отвечает другая нода: проверьте ID ноды',
+    'AGENT_HTTP_ERROR': 'Agent вернул ошибку', 'AGENT_BAD_RESPONSE': 'Agent ответил некорректно',
+    'REMNAWAVE_TOKEN_REJECTED': 'Remnawave отклонил API-токен (истёк?): sudo /opt/awg-extension/awg set-token',
+    'REMNAWAVE_UNAVAILABLE': 'Remnawave недоступен',
+}
+
+
 class APIError(RuntimeError):
     pass
 
@@ -25,6 +39,12 @@ class ControllerAPI:
         except httpx.HTTPError:
             raise APIError('Controller недоступен') from None
         if response.status_code >= 400:
+            try:
+                reason = response.json().get('reason')
+            except ValueError:
+                reason = None
+            if reason in REASONS:
+                raise APIError(REASONS[reason])
             raise APIError(f'{MESSAGES.get(response.status_code, "ошибка Controller")} (HTTP {response.status_code})')
         return response.json() if response.content else {}
 

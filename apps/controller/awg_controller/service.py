@@ -290,10 +290,10 @@ class Controller:
                     await conn.execute('UPDATE awg_tombstones SET acknowledged_at=now() WHERE peer_id=%s',(peer['id'],))
                     await conn.execute("UPDATE awg_ip_allocations SET peer_id=NULL,released_by=%s,release_after=now()+(%s * interval '1 second') WHERE peer_id=%s",(peer['id'],self.settings.quarantine_seconds,peer['id']))
             await self._collect(conn, await self.agents.traffic(registration,deployment['id']))
-        except Exception:
+        except Exception as failure:
             self.metrics['apply_errors'] += 1
             await conn.execute('UPDATE awg_nodes SET online=false WHERE id=%s',(registration.node_id,))
-            await self.error('AGENT_RECONCILE_FAILED',registration.node_id)
+            await self.error(getattr(failure, 'reason', 'AGENT_RECONCILE_FAILED'),registration.node_id)
 
     async def _collect(self, conn, snapshot):
         async with conn.transaction():

@@ -85,7 +85,12 @@ def create_app(controller=None):
     @app.exception_handler(UpstreamError)
     @app.exception_handler(AgentError)
     async def dependency_error(request, exc):
-        return JSONResponse(status_code=503,content={'code':'DEPENDENCY_UNAVAILABLE','correlation_id':request.state.correlation_id})
+        if isinstance(exc, AgentError):
+            reason = exc.reason
+        else:
+            reason = 'REMNAWAVE_TOKEN_REJECTED' if getattr(exc, 'unauthorized', False) else 'REMNAWAVE_UNAVAILABLE'
+        return JSONResponse(status_code=503,content={'code':'DEPENDENCY_UNAVAILABLE','reason':reason,
+            'correlation_id':request.state.correlation_id})
 
     def service(request: Request):
         return request.app.state.controller

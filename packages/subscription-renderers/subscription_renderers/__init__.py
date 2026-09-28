@@ -341,8 +341,20 @@ def info_links(peer: SubscriptionPeer) -> list[str]:
     return links
 
 
+def info_document(stock: bytes) -> bool:
+    """Stock subscription-info JSON (`/info`, and `/api/sub/<id>` opened in a browser) with a `links` list."""
+    if len(stock) > 2 * 1024 * 1024 or b'"links"' not in stock:
+        return False
+    try:
+        document = json.loads(stock)
+    except (ValueError, UnicodeError, RecursionError):
+        return False
+    target = document.get('response', document) if isinstance(document, dict) else None
+    return isinstance(target, dict) and isinstance(target.get('links'), list)
+
+
 def enrich_info(stock: bytes, peers: list[SubscriptionPeer]) -> bytes:
-    """`/api/sub/<id>/info` (subscription page data): append AWG links to `response.links`."""
+    """Subscription-info JSON (page data, browser view): append AWG links to `response.links`."""
     try:
         document = json.loads(stock)
         target = document.get('response', document) if isinstance(document, dict) else None

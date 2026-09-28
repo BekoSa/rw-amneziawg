@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -15,7 +16,9 @@ from starlette.responses import Response, StreamingResponse
 
 from awg_contracts import SubscriptionMaterial
 from awg_capabilities import FAMILIES, identify
-from subscription_renderers import RawAWGRenderer, accepts, enrich, enrich_info
+from subscription_renderers import RawAWGRenderer, accepts, enrich, enrich_info, info_document
+
+log = logging.getLogger('uvicorn.error')
 
 HOP_HEADERS = {b'connection', b'keep-alive', b'proxy-authenticate', b'proxy-authorization',
                b'te', b'trailer', b'transfer-encoding', b'upgrade'}
@@ -264,13 +267,21 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
         except httpx.HTTPError:
             return Response('Stock subscription unavailable', status_code=502, headers={'cache-control': 'no-store'})
         response_headers = sanitize_headers(upstream.headers.raw)
-        info = matched is not None and matched['suffix'] == 'info'
+        # Subscription-info JSON: the page's `/info`, or the root URL opened in a browser (stock answers
+        # `Accept: text/html` with the same document). Both get the AWG links in `links`.
+        info = matched is not None and (matched['suffix'] == 'info' or (
+            matched['suffix'] is None and upstream.headers.get('content-type', '').startswith('application/json')))
         cap = identify(request.headers.get('user-agent', ''))
+        client = 'page' if matched is not None and matched['suffix'] == 'info' else cap.family
         eligible = (request.method == 'GET' and not stock_denied(upstream) and matched is not None
                     and (info or cap.renderer is not None) and bool(config.controller_token)
                     and not CONDITIONAL_HEADERS.intersection(request.headers)
                     and upstream.headers.get('content-encoding', 'identity').lower() == 'identity'
                     and 'no-transform' not in upstream.headers.get('cache-control', '').lower())
+        if matched is not None and request.method == 'GET' and not eligible:
+            reason = ('stock-denied' if stock_denied(upstream) else 'no-awg-for-client' if cap.renderer is None and not info
+                      else 'no-controller-token' if not config.controller_token else 'stock-encoded-or-conditional')
+            log.info('subscription client=%s awg=skipped reason=%s', client, reason)
         iterator = raw_chunks(upstream).__aiter__()
         buffered, size = [], 0
         if eligible:
@@ -285,7 +296,8 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
                 await upstream.aclose()
                 return Response('Stock subscription interrupted', status_code=502, headers={'cache-control': 'no-store'})
         stock = b''.join(buffered)
-        if eligible and not info and not accepts(stock, cap):
+        if eligible and not (info_document(stock) if info else accepts(stock, cap)):
+            log.info('subscription client=%s awg=skipped reason=stock-format-not-extendable', client)
             eligible = False
         if not eligible:
             return stream_back(upstream, buffered, iterator)
@@ -298,13 +310,20 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
                     result = enrich_info(stock, peers.peers)
                 else:
                     result = enrich(stock, upstream.headers.get('content-type', ''), cap, peers.peers)
+            # Counts only, never tokens or keys. "no ready AWG" = user not in a profile squad, or the
+            # profile's node is not READY/online (see `awg status`).
+            log.info('subscription client=%s awg=%s ready_peers=%d', client,
+                     'added' if result != stock else 'unchanged', len(peers.peers))
             if result != stock:
                 response_headers = [(name, value) for name, value in response_headers if name.lower() not in BODY_VALIDATORS]
                 response_headers.append((b'cache-control', b'private, no-store'))
                 return plain_response(200, response_headers, result)
-        except Exception:
+        except Exception as error:
             # Never include exception text: it may contain token URLs or peer keys.
             app.state.render_errors += 1
+            status = error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None
+            log.warning('subscription client=%s awg=failed error=%s%s', client, type(error).__name__,
+                        f' controller_status={status}' if status else '')
         return plain_response(upstream.status_code, response_headers, stock)
 
     return app

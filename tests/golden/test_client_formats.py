@@ -139,6 +139,28 @@ def test_awg31_throne_and_amneziavpn(peer31):
     assert 'HeaderProtectionKey = ' in last['config']
 
 
+def test_generated_awg31_profile_reaches_every_client_intact(peer):
+    """Every field of a default (generated) 3.1 profile survives each client format."""
+    from awg_capabilities import identify
+    from awg_config import random_parameters
+    from subscription_renderers import AmneziaVpnRenderer, RawAWGRenderer, enrich, snake
+    peer.protocol.version = '3.1'
+    peer.protocol.parameters = random_parameters('3.1')
+    params = peer.protocol.parameters
+    options = yaml.safe_load(enrich(b'proxies: []\n', 'text/yaml', identify('mihomo/1.19.31'), [peer]))['proxies'][0]['amnezia-wg-option']
+    link = enrich(URI_STOCK, 'text/plain', identify('Throne/1.3.1'), [peer])[len(URI_STOCK):].decode().strip()
+    query = {k: v[0] for k, v in parse_qs(urlsplit(link).query).items()}
+    conf = RawAWGRenderer().entry(peer)
+    last = json.loads(decode_vpn_key(AmneziaVpnRenderer().entry(peer))['containers'][0]['awg']['last_config'])
+    for field, value in params.items():
+        boolean = field in ('RandomTrailers', 'DisableCookies')
+        assert options[snake(field).replace('_', '-')] == (value == 'true' if boolean else value), field
+        assert query[snake(field)] == str(value), field
+        expected = ('on' if value == 'true' else 'off') if boolean else str(value)
+        assert f'{field} = {expected}\n' in conf and last[field] == expected, field
+    assert options['i1'].startswith('<r 2><b 0x8180') and options['disable-cookies'] is True
+
+
 def test_awg31_not_sent_to_clients_without_confirmed_support(peer31):
     import json as _json
     from awg_capabilities import identify

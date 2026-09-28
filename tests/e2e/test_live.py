@@ -13,6 +13,7 @@ from pathlib import Path
 import httpx
 import pytest
 import yaml
+from awg_config import random_parameters
 from remnawave_client import user_uuid_for
 
 pytestmark = pytest.mark.network
@@ -22,12 +23,9 @@ PROFILE_ID = '00000000-0000-4000-8000-0000000000a1'
 PROFILE_NAME = 'Lab | AWG'
 SQUAD_NAME = 'AWG E2E'
 MIHOMO = {'user-agent': 'mihomo/1.19.30'}
-# AWG 3.1: header protection (S1-S4 >= 12), content padding and random trailers on a real tunnel.
-PROTOCOL = {'adapter_id': 'amneziawg-go-v3', 'version': '3.1', 'parameters': {
-    'Jc': 4, 'Jmin': 40, 'Jmax': 70, 'S1': 20, 'S2': 30, 'S3': 14, 'S4': 12,
-    'H1': '1000-1100', 'H2': '2000-2100', 'H3': '3000-3100', 'H4': '4000-4100',
-    'HeaderProtectionKey': 'bGFiLW9ubHktaGVhZGVyLXByb3RlY3Rpb24ta2V5ISE=',
-    'ContentPaddingAddition': '8-32', 'RandomTrailers': 'true'}}
+# AWG 3.1 exactly as the TUI creates it by default: header protection (S1-S4 >= 12), I1 signature,
+# content padding, timings, random trailers and disabled cookies, on a real tunnel.
+PROTOCOL = {'adapter_id': 'amneziawg-go-v3', 'version': '3.1', 'parameters': random_parameters('3.1')}
 AWG_KEYS = ('Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'S3', 'S4', 'H1', 'H2', 'H3', 'H4', 'I1', 'I2', 'I3', 'I4', 'I5',
             'HeaderProtectionKey', 'ContentPaddingAddition', 'RekeyAfterTime', 'RekeyTimeout', 'RejectAfterTime',
             'KeepaliveTimeout', 'MaxHandshakeAttempts', 'RandomTrailers', 'DisableCookies')

@@ -148,6 +148,7 @@ class ProfileScreen(ModalScreen[bool]):
                     yield field('Версия протокола', Select([('AmneziaWG 3.1', '3.1'), ('AmneziaWG 2', '2')],
                                                            value=proto.get('version', '3.1'), allow_blank=False, id='version'))
                     yield Button('Сгенерировать параметры', id='generate')
+                    yield Button('Дополнить', id='complete')
                 yield field('Параметры протокола (Параметр = значение)',
                             TextArea(format_parameters(proto.get('parameters', {})), id='parameters'))
             yield Static('Сохранение не меняет работающий туннель: Сохранить → Проверить → Применить.', id='status')
@@ -219,6 +220,24 @@ class ProfileScreen(ModalScreen[bool]):
         self.query_one('#parameters', TextArea).text = format_parameters(random_parameters(version))
         self.changed()
         self.status(f'Сгенерированы параметры AmneziaWG {version}.')
+
+    @on(Button.Pressed, '#complete')
+    def complete(self):
+        # Existing profile: add the missing defaults (I1, 3.1 timings, trailers …), keep keys and headers.
+        version = self.query_one('#version', Select).value
+        area = self.query_one('#parameters', TextArea)
+        try:
+            current = parse_parameters(area.text)
+        except ValueError as error:
+            self.status(f'Ошибка в параметрах: {error}')
+            return
+        added = {k: v for k, v in random_parameters(version).items() if k not in current}
+        if not added:
+            self.status('Все параметры уже заданы.')
+            return
+        area.text = format_parameters(current | added)
+        self.changed()
+        self.status('Добавлено: ' + ', '.join(added) + '. Клиенты получат их при обновлении подписки.')
 
     @on(Button.Pressed, '#close')
     def close_screen(self):
@@ -294,6 +313,24 @@ class NodeKeyScreen(ModalScreen[None]):
     def status(self, text: str):
         self.query_one('#status', Static).update(text)
 
+    @on(Button.Pressed, '#complete')
+    def complete(self):
+        # Existing profile: add the missing defaults (I1, 3.1 timings, trailers …), keep keys and headers.
+        version = self.query_one('#version', Select).value
+        area = self.query_one('#parameters', TextArea)
+        try:
+            current = parse_parameters(area.text)
+        except ValueError as error:
+            self.status(f'Ошибка в параметрах: {error}')
+            return
+        added = {k: v for k, v in random_parameters(version).items() if k not in current}
+        if not added:
+            self.status('Все параметры уже заданы.')
+            return
+        area.text = format_parameters(current | added)
+        self.changed()
+        self.status('Добавлено: ' + ', '.join(added) + '. Клиенты получат их при обновлении подписки.')
+
     @on(Button.Pressed, '#close')
     def close_screen(self):
         self.dismiss(None)
@@ -357,8 +394,9 @@ class AWGApp(App):
     .version-row { height: auto; }
     .version-row > .field { width: 1fr; }
     #generate { margin: 1 0 0 2; min-width: 28; }
+    #complete { margin: 1 0 0 1; min-width: 14; }
     #squads { height: auto; max-height: 8; }
-    #parameters { height: 12; }
+    #parameters { height: 16; }
     #command { height: 8; }
     .hint { color: $warning; padding-left: 1; }
     #status { height: auto; min-height: 1; padding: 0 3; color: $text-muted; }

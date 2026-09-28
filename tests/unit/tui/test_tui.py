@@ -86,7 +86,31 @@ async def test_profile_save_validate_apply_with_squad_and_generated_31(app):
         saved = next(b for m, _, b in app.fake.calls if m == 'PUT')
         assert saved['protocol']['version'] == '3.1' and saved['access']['squad_ids'] == ['a9204f4f-aa4a-4dab-9028-d4fabeaca43c']
         assert isinstance(saved['protocol']['parameters']['Jc'], int)
+        assert saved['protocol']['parameters']['I1'].startswith('<r 2><b 0x')
+        assert saved['protocol']['parameters']['RandomTrailers'] == 'true'
         assert next(b for m, p, b in app.fake.calls if p.endswith('/apply')) == {'expected_digest': 'a' * 64}
+
+
+@pytest.mark.asyncio
+async def test_complete_adds_missing_31_defaults_and_keeps_keys(app):
+    from textual.widgets import Button, TextArea
+    from awg_tui.app import parse_parameters
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        await pilot.press('n')
+        await pilot.pause()
+        screen = app.screen
+        area = screen.query_one('#parameters', TextArea)
+        old = parse_parameters(area.text)
+        for key in ('I1', 'ContentPaddingAddition', 'RandomTrailers', 'DisableCookies', 'RekeyAfterTime'):
+            del old[key]
+        area.text = '\n'.join(f'{k} = {v}' for k, v in old.items())
+        screen.query_one('#complete', Button).press()
+        await pilot.pause()
+        completed = parse_parameters(area.text)
+        assert {k: completed[k] for k in old} == old, 'keys, headers and paddings are kept'
+        assert completed['RandomTrailers'] == 'true' and completed['I1'].startswith('<r 2>')
+        assert completed['RekeyAfterTime'] == '100-120'
 
 
 @pytest.mark.asyncio

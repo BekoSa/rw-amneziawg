@@ -27,6 +27,7 @@ Gateway доверяет `X-Forwarded-*` только в этой тополог
 | Happ | ничего: по документации Happ поддерживает только VLESS/VMess/SS/Socks5/Trojan/Hysteria2 | — | — | happ.su dev-docs |
 | sing-box JSON, legacy Clash/Stash YAML | ответ не меняется, приватные данные даже не запрашиваются | — | — | — |
 | Страница подписки (`/api/sub/<id>/info`) | в `links` добавляются `amneziawg://` (для AWG 2) и `vpn://`. Stock-страница показывает ссылки только при включённой настройке **Show connection keys** (Remnawave → конфиг страницы подписки → baseSettings) | да | да | — |
+| Браузер без страницы подписки (`/api/sub/<id>`, `Accept: text/html`) | stock отвечает тем же JSON, что и `/info`; в `links` добавляются те же ссылки | да | да | — |
 | Приложение AmneziaWG (конфиг-файл) | `/api/sub/<id>/awg` отдаёт `.conf` после проверки доступа stock-подпиской | да | да | — |
 
 \* INCY документирует только поля AWG 2 (Jc…I5). Для профиля 3.1 INCY и «прочие» клиенты AWG-строку
@@ -48,12 +49,20 @@ Gateway доверяет `X-Forwarded-*` только в этой тополог
 
 Профиль версии `3.1` добавляет к AWG 2 (Jc/Jmin/Jmax, S1–S4, H1–H4 диапазонами, I1–I5):
 
-| Параметр | Сторона | Значение |
+| Параметр | Сторона | Значение по умолчанию (генератор TUI) |
 |---|---|---|
-| `HeaderProtectionKey` | сервер и клиент (обязан совпадать) | base64 32 байта; требует S1–S4 ≥ 12 |
-| `ContentPaddingAddition` | клиент | диапазон `a-b` |
-| `RekeyAfterTime`, `RekeyTimeout`, `RejectAfterTime`, `KeepaliveTimeout`, `MaxHandshakeAttempts` | клиент | число или диапазон |
-| `RandomTrailers`, `DisableCookies` | клиент | `true`/`false` |
+| `HeaderProtectionKey` | сервер и клиент (обязан совпадать) | случайные 32 байта (base64); требует S1–S4 ≥ 12 |
+| `RandomTrailers` | сервер и клиент (без него приёмник отбрасывает удлинённые handshake) | `true` |
+| `ContentPaddingAddition` | клиент (amneziawg-go ограничивает окном UDP) | случайный диапазон, например `14-120` |
+| `RekeyAfterTime`, `RekeyTimeout`, `RejectAfterTime`, `KeepaliveTimeout`, `MaxHandshakeAttempts` | клиент | `100-120`, `3-7`, `150-180`, `5-15`, `15-20` |
+| `DisableCookies` | локально (не отвечать cookie под нагрузкой) | `true` |
+| `I1` (есть и в AWG 2) | отправитель handshake | сигнатурный пакет: DNS-ответ на A-запрос популярного домена со случайным ID, TTL и адресом |
+
+Таймеры, `RandomTrailers`, `DisableCookies` и форма `I1` совпадают с тем, что AmneziaVPN 5.0.3.0
+выставляет своим серверам 3.1 (`protocolConstants.h`, `awgInstaller.cpp`). Для профиля, созданного до
+этих дефолтов, в TUI есть кнопка **«Дополнить»**: добавляет недостающие поля и не трогает ключи,
+заголовки и паддинги. Клиенты получат новые поля при обновлении подписки; до этого клиенты без
+`RandomTrailers` не пройдут handshake.
 
 Булевы значения записываются по-разному, и Gateway это учитывает: UAPI amneziawg-go принимает
 `true/false`, `awg setconf` и AmneziaVPN — `on/off` (AmneziaVPN считает включённым всё, кроме `off`),
@@ -69,7 +78,11 @@ Throne — `true/false`, Mihomo — YAML-булево. Сервер с `HeaderPr
 - Наружу доступны только `/api/sub/<token>[/…]`; admin/auth API Remnawave через Gateway недоступен.
   Пути проверяются по сырым байтам (encoded traversal не проходит).
 - `/metrics` Gateway закрыт токеном `AWG_GATEWAY_METRICS_TOKEN`.
-- Тексты ошибок, токены и ключи не логируются и не возвращаются клиенту.
+- Тексты ошибок, токены и ключи не логируются и не возвращаются клиенту. Для диагностики Gateway пишет
+  строку на каждую подписку: `subscription client=mihomo awg=added ready_peers=1`, либо
+  `awg=unchanged ready_peers=0` (пользователь не в squad профиля или нода профиля не READY/online), либо
+  `awg=skipped reason=…` (`stock-denied`, `no-awg-for-client`, `stock-format-not-extendable` …):
+  `docker logs awg-gateway`.
 
 Проверки: golden-тесты `tests/golden/test_client_formats.py`, `tests/golden/test_subscription.py`,
 Gateway — `tests/unit/subscription/test_gateway.py`, реальный туннель AWG 3.1 — `scripts/lab.sh e2e`,

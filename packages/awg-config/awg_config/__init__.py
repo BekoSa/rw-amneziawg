@@ -1,9 +1,11 @@
 """Strict adapter for the pinned amneziawg-go v3.1 runtime: AWG 1.0, 2 and 3.1 profiles.
 
-AWG 3.1 (amneziawg-go README, v3.1.20260828) adds server-side HeaderProtectionKey (needs S1-S4 >= 12)
-and client-side ContentPaddingAddition, timings (uint32 ranges), RandomTrailers and DisableCookies.
+AWG 3.1 (amneziawg-go README, v3.1.20260828) adds HeaderProtectionKey (needs S1-S4 >= 12) and
+RandomTrailers, which must match on both sides, and client-side ContentPaddingAddition, timings
+(uint32 ranges) and DisableCookies.
 """
 import base64
+import ipaddress
 import re
 import secrets
 from awg_contracts import DesiredDeployment
@@ -18,7 +20,8 @@ V3_RANGES = {'ContentPaddingAddition': 'content_padding_addition', 'RekeyAfterTi
              'KeepaliveTimeout': 'keepalive_timeout', 'MaxHandshakeAttempts': 'max_handshake_attempts'}
 V3_BOOLS = {'RandomTrailers': 'random_trailers', 'DisableCookies': 'disable_cookies'}
 V3_FIELDS = {'HeaderProtectionKey', *V3_RANGES, *V3_BOOLS}
-# Keys amneziawg-go reports back on UAPI get (the 3.1 additions are write-only there).
+# Keys compared with UAPI get for health. amneziawg-go reports the 3.1 additions too, but in other forms
+# (hex key, 1/0 toggles), so they are verified through the applied digest instead.
 READABLE = {'jc', 'jmin', 'jmax', 's1', 's2', 's3', 's4', 'h1', 'h2', 'h3', 'h4', 'i1', 'i2', 'i3', 'i4', 'i5'}
 _FIELDS = {'Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'S3', 'S4', 'H1', 'H2', 'H3', 'H4', 'I1', 'I2', 'I3', 'I4', 'I5'}
 
@@ -125,21 +128,52 @@ def compile_uapi(deployment: DesiredDeployment, private_key: bytes, existing_key
     return '\n'.join(lines) + '\n\n'
 
 
+# AWG 3.1 client defaults as AmneziaVPN 5.0.3.0 sets them for its own servers (protocolConstants.h):
+# ranges are picked per event by amneziawg-go, so every connection varies within them.
+V3_DEFAULTS = {'RekeyAfterTime': '100-120', 'RekeyTimeout': '3-7', 'RejectAfterTime': '150-180',
+               'KeepaliveTimeout': '5-15', 'MaxHandshakeAttempts': '15-20',
+               # Both sides must enable trailers: a receiver without them drops longer handshakes.
+               'RandomTrailers': 'true', 'DisableCookies': 'true'}
+_DNS_NAMES = ('www.google.com', 'www.youtube.com', 'www.apple.com', 'icloud.com', 'www.microsoft.com',
+              'cloudflare.com', 'github.com', 'www.wikipedia.org', 'yandex.ru', 'vk.com', 'ya.ru', 'mail.ru')
+
+
+def dns_signature(rng=None) -> str:
+    """I1 signature packet: a DNS A-record response (random transaction ID via `<r 2>`), the same shape as
+    AmneziaVPN's default I1 but with a random well-known name, TTL and public address per profile."""
+    rng = rng or secrets.SystemRandom()
+    name = rng.choice(_DNS_NAMES)
+    qname = b''.join(bytes([len(label)]) + label.encode() for label in name.split('.')) + b'\0'
+    while not (address := ipaddress.IPv4Address(rng.getrandbits(32))).is_global or address.is_multicast:
+        pass
+    packet = (bytes.fromhex('81800001000100000000') + qname + bytes.fromhex('00010001c00c00010001')
+              + rng.randint(60, 3600).to_bytes(4, 'big') + b'\x00\x04' + address.packed)
+    return f'<r 2><b 0x{packet.hex()}>'
+
+
 def random_parameters(version: str = '3.1') -> dict[str, int | str]:
-    """Fresh AWG 2 obfuscation values that pass `parameters()`: disjoint header ranges and junk sizes
-    kept small enough for the default MTU. S1 + 56 != S2 keeps init/response sizes distinguishable."""
+    """Fresh obfuscation values that pass `parameters()` for `version`: disjoint header ranges, junk sizes
+    kept small enough for the default MTU, S1 + 56 != S2 so init/response sizes differ, an I1 signature
+    packet, and for 3.1 header protection, content padding, timings and random trailers."""
     rng = secrets.SystemRandom()
     jmin = rng.randint(40, 80)
     s1 = rng.randint(15, 150)
     s2 = rng.choice([v for v in range(15, 151) if s1 + 56 != v])
+    values = {'Jc': rng.randint(4, 8), 'Jmin': jmin, 'Jmax': jmin + rng.randint(20, 100), 'S1': s1, 'S2': s2}
+    if version == '1.0':
+        # AWG 1.0: single header values, no S3/S4 or signature packets.
+        headers = rng.sample(range(5, 2 ** 31), 4)
+        return values | {f'H{i}': h for i, h in enumerate(headers, 1)}
     # Four disjoint H ranges inside 5..2^31, each ~1-16 million values wide.
     starts = sorted(rng.sample(range(5, 2 ** 31 - 2 ** 24, 2 ** 24), 4))
     ranges = [f'{start}-{start + rng.randint(2 ** 20, 2 ** 24 - 1)}' for start in starts]
     rng.shuffle(ranges)
-    values = {'Jc': rng.randint(3, 6), 'Jmin': jmin, 'Jmax': jmin + rng.randint(20, 100), 'S1': s1, 'S2': s2,
-              'S3': rng.randint(20, 64), 'S4': rng.randint(12, 32) if version == '3.1' else rng.randint(0, 16),
-              'H1': ranges[0], 'H2': ranges[1], 'H3': ranges[2], 'H4': ranges[3]}
+    values |= {'S3': rng.randint(20, 64), 'S4': rng.randint(12, 32) if version == '3.1' else rng.randint(0, 16),
+               'H1': ranges[0], 'H2': ranges[1], 'H3': ranges[2], 'H4': ranges[3], 'I1': dns_signature(rng)}
     if version == '3.1':
         # Server-side shared key; S1-S4 above are all >= 12 as header protection requires.
         values['HeaderProtectionKey'] = base64.b64encode(secrets.token_bytes(32)).decode()
+        low = rng.randint(8, 24)
+        values['ContentPaddingAddition'] = f'{low}-{low + rng.randint(60, 110)}'  # capped by amneziawg-go to the UDP window
+        values |= V3_DEFAULTS
     return values

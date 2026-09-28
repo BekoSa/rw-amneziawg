@@ -153,6 +153,35 @@ async def test_subscription_page_info_links_enriched():
 
 
 @pytest.mark.asyncio
+async def test_browser_view_of_subscription_url_gets_awg_links(caplog):
+    """Stock answers a browser (Accept: text/html) on /api/sub/<id> with the info JSON, not the app list."""
+    import json
+    stock_body = json.dumps({'isFound': True, 'links': ['vless://a#one'], 'user': {'username': 'u'}}).encode()
+    browser = {'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0', 'accept': 'text/html'}
+    caplog.set_level('INFO', logger='uvicorn.error')
+    response = await request(lambda req: httpx.Response(200, content=stock_body, headers={'content-type': 'application/json'}),
+                             lambda req: httpx.Response(200, json=material()), headers=browser)
+    links = response.json()['links']
+    assert links[0] == 'vless://a#one' and links[-1].startswith('vpn://') and links[-1].endswith('#AWG')
+    assert 'awg=added ready_peers=1' in caplog.text and 'valid-token' not in caplog.text
+    # Other JSON formats (e.g. sing-box) are not info documents: stock bytes, no private material fetched.
+    singbox = json.dumps({'outbounds': [{'type': 'vless'}]}).encode()
+    response = await request(lambda req: httpx.Response(200, content=singbox, headers={'content-type': 'application/json'}),
+                             lambda req: pytest.fail('no material'), headers={'user-agent': 'SFA/1.12'})
+    assert response.content == singbox
+
+
+@pytest.mark.asyncio
+async def test_empty_material_is_logged_without_secrets(caplog):
+    caplog.set_level('INFO', logger='uvicorn.error')
+    empty = material() | {'peers': []}
+    response = await request(lambda req: httpx.Response(200, content=b'proxies: []\n', headers={'content-type': 'text/yaml'}),
+                             lambda req: httpx.Response(200, json=empty))
+    assert response.content == b'proxies: []\n'
+    assert 'client=mihomo awg=unchanged ready_peers=0' in caplog.text and 'service-secret' not in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_awg_conf_download_requires_stock_access_first():
     seen = []
     def stock(req):

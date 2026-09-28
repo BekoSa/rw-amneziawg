@@ -1,4 +1,5 @@
 import base64
+import re
 from uuid import uuid4
 
 import pytest
@@ -242,19 +243,30 @@ def test_egress_rules_deny_service_networks_and_inbound():
 
 
 def test_generated_parameters_are_valid_and_random():
-    from awg_config import compile_uapi, random_parameters
-    seen = set()
-    for index in range(200):
-        version = ('2', '3.1')[index % 2]
+    from awg_config import V3_FIELDS, compile_uapi, random_parameters
+    seen, signatures = set(), set()
+    for index in range(300):
+        version = ('1.0', '2', '3.1')[index % 3]
         values = random_parameters(version)
         config = desired()
         config.profile.protocol.version = version
         config.profile.protocol.parameters = values
-        compile_uapi(config, b's' * 32, set())  # raises on invalid/overlapping values
-        assert values['S1'] + 56 != values['S2']
+        uapi = compile_uapi(config, b's' * 32, set())  # raises on invalid/overlapping values
+        assert values['S1'] + 56 != values['S2'] and 4 <= values['Jc'] <= 8
         seen.add(values['H1'])
-    assert len(seen) > 150
-
+        if version == '1.0':
+            assert not {'S3', 'S4', 'I1'} & set(values)
+            continue
+        # I1 mimics a DNS A response: random ID, answer flags, one question and one 4-byte answer.
+        packet = bytes.fromhex(re.fullmatch(r'<r 2><b 0x([0-9a-f]+)>', values['I1'])[1])
+        assert packet[:10] == bytes.fromhex('81800001000100000000') and packet[-6:-4] == b'\x00\x04'
+        signatures.add(values['I1'])
+        if version == '3.1':
+            assert set(values) >= V3_FIELDS, 'every AWG 3.1 field is configured by default'
+            assert 'random_trailers=true' in uapi and 'disable_cookies=true' in uapi
+            low, high = map(int, values['ContentPaddingAddition'].split('-'))
+            assert 8 <= low < high <= 134
+    assert len(seen) > 250 and len(signatures) > 150
 
 
 def test_awg31_parameters_compile_and_enforce_header_protection_rules():

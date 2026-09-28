@@ -12,6 +12,9 @@ UDP_PORTS=''
 MANAGEMENT_PORT=8443
 MANAGEMENT_BIND=0.0.0.0
 REGISTRY=''
+REF=main
+NO_PULL=0
+DEFAULT_REGISTRY=ghcr.io/bekosa/rw-amneziawg
 IMAGE_TAG=latest
 UDP_BIND=0.0.0.0
 
@@ -25,12 +28,32 @@ while [ $# -gt 0 ]; do
         --udp-bind) UDP_BIND=$2; shift 2 ;;
         --image-registry) REGISTRY=${2%/}; shift 2 ;;  # CI images, e.g. ghcr.io/bekosa/rw-amneziawg
         --image-tag) IMAGE_TAG=$2; shift 2 ;;
+        --ref) REF=$2; shift 2 ;;              # git ref of fetched files (standalone mode)
+        --no-pull) NO_PULL=1; shift ;;         # use an image already present locally
         *) echo 'Usage: sudo ./install-node.sh [--secret-file FILE] [--udp-ports PORT|FROM-TO] [--management-port 8443] [--management-bind IP]'; exit 2 ;;
     esac
 done
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
+
+# Standalone mode: the script alone is enough. Without a checkout next to it, the few files it needs are
+# fetched from GitHub (pinned by --ref) and the images come from GHCR, so nothing is built on the server.
+fetch() {  # fetch REPO_PATH DEST
+    case $RAW_BASE in
+        /*) cp "$RAW_BASE/$1" "$2" ;;  # tests: a local tree instead of GitHub
+        *) if command -v curl >/dev/null; then curl -fsSL "$RAW_BASE/$1" -o "$2"
+           else wget -qO "$2" "$RAW_BASE/$1"; fi ;;
+    esac || die "Cannot download $1 from $RAW_BASE"
+}
+
+RAW_BASE=${AWG_RAW_BASE:-https://raw.githubusercontent.com/BekoSa/rw-amneziawg/$REF}
+if [ -f "$SOURCE_DIR/deploy/production/node.compose.yaml" ] && [ -f "$SOURCE_DIR/apps/node-agent/Dockerfile" ]; then
+    STANDALONE=0
+else
+    STANDALONE=1
+    REGISTRY=${REGISTRY:-$DEFAULT_REGISTRY}
+fi
 
 command -v docker >/dev/null || die 'Docker is required'
 docker compose version >/dev/null 2>&1 || die 'Docker Compose v2 is required'
@@ -57,9 +80,16 @@ mkdir -p "$DIR/pki"
 chmod 700 "$DIR"
 # Traverse-only: the Agent (root without DAC override) must reach its key; the key itself stays 0600.
 chmod 711 "$DIR/pki"
-cp "$SOURCE_DIR/deploy/production/node.compose.yaml" "$DIR/compose.yaml"
+if [ "$STANDALONE" = 1 ]; then
+    say "Fetching the node compose file ($REF)"
+    fetch deploy/production/node.compose.yaml "$DIR/compose.yaml"
+    BUILD_DIR=$DIR  # never built in standalone mode
+else
+    cp "$SOURCE_DIR/deploy/production/node.compose.yaml" "$DIR/compose.yaml"
+    BUILD_DIR=$SOURCE_DIR
+fi
 {
-    echo "AWG_SOURCE_DIR=$SOURCE_DIR"
+    echo "AWG_SOURCE_DIR=$BUILD_DIR"
     echo "AWG_UDP_PORTS=$UDP_PORTS"
     echo "AWG_UDP_BIND=$UDP_BIND"
     echo "AWG_MANAGEMENT_PORT=$MANAGEMENT_PORT"
@@ -73,24 +103,34 @@ dc() { docker compose -f "$DIR/compose.yaml" --env-file "$DIR/.env" "$@"; }
 AGENT_IMAGE=awg-agent:local
 if [ -n "$REGISTRY" ]; then
     AGENT_IMAGE="$REGISTRY/agent:$IMAGE_TAG"
-    say "Pulling $AGENT_IMAGE"
-    dc pull awg-agent
+    if [ "$NO_PULL" = 1 ]; then
+        docker image inspect "$AGENT_IMAGE" >/dev/null || die "Image $AGENT_IMAGE not found locally"
+    else
+        say "Pulling $AGENT_IMAGE"
+        dc pull awg-agent
+    fi
 else
     say 'Building the Agent image (pinned amneziawg-go and amneziawg-tools, see apps/node-agent/Dockerfile)'
     dc build awg-agent
 fi
-if [ -n "$SECRET_FILE" ]; then
-    SECRET=$(cat "$SECRET_FILE")
+if [ -z "$SECRET_FILE" ] && [ -f "$DIR/pki/agent.crt" ] && [ -f "$DIR/pki/node.env" ]; then
+    # Re-run (update): keep the enrolled identity; the node key is needed only for the first install.
+    NODE_ID=$(sed -n 's/^AWG_NODE_ID=//p' "$DIR/pki/node.env")
+    say "Node $NODE_ID is already enrolled; updating in place"
 else
-    printf 'Paste the node key from the extension TUI (awgnode1:...): '
-    stty -echo 2>/dev/null || true; read -r SECRET; stty echo 2>/dev/null || true; echo
+    if [ -n "$SECRET_FILE" ]; then
+        SECRET=$(cat "$SECRET_FILE")
+    else
+        printf 'Paste the node key from the extension TUI (awgnode1:...): '
+        stty -echo 2>/dev/null || true; read -r SECRET; stty echo 2>/dev/null || true; echo
+    fi
+    say 'Unpacking and verifying the node key'
+    NODE_ID=$(printf '%s' "$SECRET" | docker run --rm -i --network none -v "$DIR/pki:/pki" \
+        --entrypoint python "$AGENT_IMAGE" -m awg_agent.enroll /pki) || die 'Invalid node key'
+    unset SECRET
 fi
-say 'Unpacking and verifying the node key'
-NODE_ID=$(printf '%s' "$SECRET" | docker run --rm -i --network none -v "$DIR/pki:/pki" \
-    --entrypoint python "$AGENT_IMAGE" -m awg_agent.enroll /pki) || die 'Invalid node key'
-unset SECRET
 say "Starting the Agent (node $NODE_ID)"
-dc up -d --pull never
+dc up -d --pull never --force-recreate
 say 'Done'
 printf '\n  Node %s is running. Management API: TCP %s (mutual TLS), AmneziaWG: UDP %s.\n' "$NODE_ID" "$MANAGEMENT_PORT" "$UDP_PORTS"
 printf '  Docker-published ports bypass UFW. To allow management only from your panel server, e.g.:\n'

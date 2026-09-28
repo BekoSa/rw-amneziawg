@@ -7,8 +7,8 @@ Subscription Gateway и терминальное управление (TUI). П�
 через Internal Squads; AWG автоматически появляется в подписках (AmneziaVPN, Mihomo-клиенты, Throne,
 INCY). Все приложения Remnawave остаются stock.
 
-**Установка рядом с работающей панелью:** [deploy/production/README.md](deploy/production/README.md)
-(`sudo ./install.sh` на сервере панели, `sudo ./install-node.sh` на VPN-серверах).
+**Установка на работающий Remnawave — [INSTALL.md](INSTALL.md):** на сервере панели и на VPN-сервере
+скачивается по одному скрипту, клонировать проект не нужно.
 
 Проект находится в разработке. Полная готовность определяется проверками из
 [карты приёмки](docs/acceptance.md), включая реальный AWG payload в изолированном Docker lab,
@@ -24,7 +24,7 @@ removal/restore и независимый review. Наличие исходни�
 - [Docker lab и проверки](docs/testing.md)
 - [Controller](docs/controller.md), [Agent](docs/agent.md)
 - [Подписки и форматы клиентов](docs/subscriptions.md), [TUI](docs/tui.md)
-- [Backup, restore и удаление](docs/operations.md), [production examples](deploy/production/README.md)
+- [Backup, restore и удаление](docs/operations.md), [установка](INSTALL.md)
 
 ## Разработка
 

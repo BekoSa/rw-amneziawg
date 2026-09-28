@@ -17,6 +17,9 @@ SUBPAGE=ask
 WEBHOOK=ask
 ASSUME_YES=0
 REGISTRY=''
+REF=main
+NO_PULL=0
+DEFAULT_REGISTRY=ghcr.io/bekosa/rw-amneziawg
 IMAGE_TAG=latest
 
 usage() {
@@ -27,8 +30,10 @@ Usage: sudo ./install.sh [options]
   --api-token-file FILE  file with a Remnawave API token (otherwise asked interactively)
   --subpage yes|no       put the Gateway in front of the stock subscription page
   --webhook yes|no       enable Remnawave webhooks to the extension (otherwise polling every 15 s)
-  --image-registry REPO  use CI images REPO/extension (e.g. ghcr.io/bekosa/rw-amneziawg) instead of building
+  --image-registry REPO  images REPO/extension (standalone default: ghcr.io/bekosa/rw-amneziawg)
   --image-tag TAG        tag of those images (default: latest)
+  --ref REF              git ref of the files fetched from GitHub in standalone mode (default: main)
+  --no-pull              use images already present locally
   --yes                  accept defaults for all other questions
 EOF
 }
@@ -43,6 +48,8 @@ while [ $# -gt 0 ]; do
         --yes) ASSUME_YES=1; shift ;;
         --image-registry) REGISTRY=${2%/}; shift 2 ;;
         --image-tag) IMAGE_TAG=$2; shift 2 ;;
+        --ref) REF=$2; shift 2 ;;
+        --no-pull) NO_PULL=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) usage; exit 2 ;;
     esac
@@ -96,6 +103,24 @@ change_stock() {  # change_stock FILE KEY VALUE CONTAINER
     set_env "$1" "$2" "$3"
 }
 
+# Standalone mode: the script alone is enough. Without a checkout next to it, the few files it needs are
+# fetched from GitHub (pinned by --ref) and the images come from GHCR, so nothing is built on the server.
+fetch() {  # fetch REPO_PATH DEST
+    case $RAW_BASE in
+        /*) cp "$RAW_BASE/$1" "$2" ;;  # tests: a local tree instead of GitHub
+        *) if command -v curl >/dev/null; then curl -fsSL "$RAW_BASE/$1" -o "$2"
+           else wget -qO "$2" "$RAW_BASE/$1"; fi ;;
+    esac || die "Cannot download $1 from $RAW_BASE"
+}
+
+RAW_BASE=${AWG_RAW_BASE:-https://raw.githubusercontent.com/BekoSa/rw-amneziawg/$REF}
+if [ -f "$SOURCE_DIR/deploy/production/compose.yaml" ] && [ -f "$SOURCE_DIR/Dockerfile" ]; then
+    STANDALONE=0  # full checkout: may build locally
+else
+    STANDALONE=1
+    REGISTRY=${REGISTRY:-$DEFAULT_REGISTRY}
+fi
+
 command -v docker >/dev/null || die 'Docker is required'
 docker compose version >/dev/null 2>&1 || die 'Docker Compose v2 is required'
 
@@ -114,7 +139,17 @@ chmod 700 "$DIR"
 ENV_FILE="$DIR/.env"
 [ -f "$ENV_FILE" ] || : > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
-cp "$SOURCE_DIR/deploy/production/compose.yaml" "$DIR/compose.yaml"
+if [ "$STANDALONE" = 1 ]; then
+    say "Fetching compose file and uninstaller ($REF)"
+    fetch deploy/production/compose.yaml "$DIR/compose.yaml"
+    fetch uninstall.sh "$DIR/uninstall.sh"
+    AWG_BUILD_DIR=$DIR  # never built in standalone mode
+else
+    cp "$SOURCE_DIR/deploy/production/compose.yaml" "$DIR/compose.yaml"
+    cp "$SOURCE_DIR/uninstall.sh" "$DIR/uninstall.sh"
+    AWG_BUILD_DIR=$SOURCE_DIR
+fi
+chmod 700 "$DIR/uninstall.sh"
 dc() { docker compose -f "$DIR/compose.yaml" --env-file "$ENV_FILE" "$@"; }
 get_env() { sed -n "s/^$1=//p" "$ENV_FILE" | head -1; }
 keep_or() { value=$(get_env "$1"); [ -n "$value" ] && echo "$value" || echo "$2"; }
@@ -131,7 +166,7 @@ fi
 
 CONTROLLER_ID=$(keep_or AWG_CONTROLLER_ID "$(cat /proc/sys/kernel/random/uuid)")
 for pair in \
-    "AWG_SOURCE_DIR=$SOURCE_DIR" "REMNAWAVE_NETWORK=$NETWORK" "REMNAWAVE_API_URL=$REMNAWAVE_API_URL" \
+    "AWG_SOURCE_DIR=$AWG_BUILD_DIR" "REMNAWAVE_NETWORK=$NETWORK" "REMNAWAVE_API_URL=$REMNAWAVE_API_URL" \
     "REMNAWAVE_API_TOKEN=$API_TOKEN" "AWG_CONTROLLER_ID=$CONTROLLER_ID" \
     "AWG_GATEWAY_STOCK_URL=$(keep_or AWG_GATEWAY_STOCK_URL "http://$PANEL:$PANEL_PORT")" \
     "AWG_DATABASE_PASSWORD=$(keep_or AWG_DATABASE_PASSWORD "$(secret 32)")" \
@@ -144,8 +179,12 @@ done
 
 if [ -n "$REGISTRY" ]; then
     set_env "$ENV_FILE" AWG_EXTENSION_IMAGE "$REGISTRY/extension:$IMAGE_TAG"
-    say "Pulling $REGISTRY/extension:$IMAGE_TAG"
-    dc pull controller
+    if [ "$NO_PULL" = 1 ]; then
+        docker image inspect "$REGISTRY/extension:$IMAGE_TAG" >/dev/null || die "Image $REGISTRY/extension:$IMAGE_TAG not found locally"
+    else
+        say "Pulling $REGISTRY/extension:$IMAGE_TAG"
+        dc pull controller
+    fi
 else
     say 'Building the extension image (first run takes a few minutes)'
     dc build controller
@@ -196,7 +235,7 @@ if [ "${ROUTE_SUBPAGE:-0}" = 1 ]; then
     say 'Re-creating the stock subscription page with the new REMNAWAVE_PANEL_URL'
     restart_stock "$SUBPAGE_CONTAINER"
     if [ "$(container_env "$SUBPAGE_CONTAINER" REMNAWAVE_PANEL_URL)" != 'http://awg-gateway:8081' ]; then
-        "$SOURCE_DIR/uninstall.sh" --dir "$DIR" --stock-only
+        "$DIR/uninstall.sh" --dir "$DIR" --stock-only
         die "The subscription page sets REMNAWAVE_PANEL_URL inside its compose file, not .env. Change it there to http://awg-gateway:8081 and re-run."
     fi
 fi

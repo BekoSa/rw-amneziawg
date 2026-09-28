@@ -18,7 +18,7 @@ cleanup() {
     [ -f "$ROOT/token" ] && stock_api "
 old = api.get('/api/users/by-username/installer_awg')
 if old.status_code == 200: api.delete('/api/users/%s' % old.json()['response']['id'])" >/dev/null 2>&1 || true
-    [ -f "$EXT/compose.yaml" ] && ./uninstall.sh --dir "$EXT" --purge >/dev/null 2>&1 || true
+    [ -f "$EXT/uninstall.sh" ] && "$EXT/uninstall.sh" --dir "$EXT" --purge >/dev/null 2>&1 || true
     [ -f "$NODE/compose.yaml" ] && docker compose -f "$NODE/compose.yaml" --env-file "$NODE/.env" down -v >/dev/null 2>&1 || true
     [ -f "$SUB/docker-compose.yml" ] && docker compose -p remnawave-subpage --project-directory "$SUB" -f "$SUB/docker-compose.yml" down >/dev/null 2>&1 || true
     exit "$status"
@@ -60,7 +60,18 @@ printf 'APP_PORT=3010\nREMNAWAVE_PANEL_URL=http://awg-dev-remnawave-1:3000\nREMN
 docker compose -p remnawave-subpage --project-directory "$SUB" -f "$SUB/docker-compose.yml" up -d
 
 say 'install.sh (non-interactive)'
-./install.sh --dir "$EXT" --network "$NET" --api-token-file "$ROOT/token" --subpage yes --webhook no --yes
+# The operator's path: only the installer scripts, no checkout. Files come from AWG_RAW_BASE (GitHub in real
+# use, this tree here) and images from a registry (local tags standing in for ghcr.io/bekosa/rw-amneziawg).
+say 'Standalone installers (no project checkout), images tagged as a registry would serve them'
+REG=localhost/rw-amneziawg
+docker build -q -t "$REG/extension:lab" . >/dev/null
+docker build -q -f apps/node-agent/Dockerfile -t "$REG/agent:lab" . >/dev/null
+mkdir -p "$ROOT/standalone"
+cp install.sh install-node.sh "$ROOT/standalone/"
+export AWG_RAW_BASE=$PWD
+"$ROOT/standalone/install.sh" --dir "$EXT" --network "$NET" --api-token-file "$ROOT/token" --subpage yes --webhook no --yes \
+    --image-registry "$REG" --image-tag lab --no-pull
+[ -x "$EXT/uninstall.sh" ] || fail 'uninstaller was not placed into the install directory'
 grep -qx 'REMNAWAVE_PANEL_URL=http://awg-gateway:8081' "$SUB/.env" || fail 'subscription page not routed through the Gateway'
 [ -s "$EXT/stock-changes" ] || fail 'changed stock keys are not recorded'
 echo 'ADMIN_EDIT_AFTER_INSTALL=kept' >> "$SUB/.env"  # an operator edit that uninstall must not roll back
@@ -70,7 +81,8 @@ say 'Node key issued in the TUI container, then install-node.sh'
 SECRET=$(docker compose -f "$EXT/compose.yaml" --env-file "$EXT/.env" --profile tools run --rm -T tui python -c \
   "import os,uuid; from pathlib import Path; from awg_tui.pki import node_bundle; print(node_bundle(Path('/pki-ca'), os.environ['AWG_CONTROLLER_ID'], uuid.uuid4()))")
 printf '%s' "$SECRET" > "$ROOT/node.key"; chmod 600 "$ROOT/node.key"
-AWG_NODE_INTERNAL_NETWORK=true ./install-node.sh --dir "$NODE" --secret-file "$ROOT/node.key" --management-port 18445 --management-bind 127.0.0.1 --udp-bind 127.0.0.1
+AWG_NODE_INTERNAL_NETWORK=true "$ROOT/standalone/install-node.sh" --dir "$NODE" --secret-file "$ROOT/node.key" \
+    --management-port 18445 --management-bind 127.0.0.1 --udp-bind 127.0.0.1 --image-registry "$REG" --image-tag lab --no-pull
 NODE_ID=$(sed -n 's/^AWG_NODE_ID=//p' "$NODE/pki/node.env")
 PORT=$(sed -n 's/^AWG_UDP_PORTS=//p' "$NODE/.env")
 [ "$PORT" -ge 20000 ] && [ "$PORT" -le 59999 ] || fail "install-node.sh did not pick a random high UDP port: $PORT"
@@ -117,6 +129,13 @@ asyncio.run(main())
 PY
 [ -n "$ADMIN" ] || fail 'no admin token'
 
+say 'Re-run install-node.sh as an update: no key is asked, the port and identity stay'
+AWG_NODE_INTERNAL_NETWORK=true "$ROOT/standalone/install-node.sh" --dir "$NODE" --management-port 18445 \
+    --management-bind 127.0.0.1 --udp-bind 127.0.0.1 --image-registry "$REG" --image-tag lab --no-pull < /dev/null
+[ "$(sed -n 's/^AWG_UDP_PORTS=//p' "$NODE/.env")" = "$PORT" ] || fail 'update changed the UDP port'
+[ "$(sed -n 's/^AWG_NODE_ID=//p' "$NODE/pki/node.env")" = "$NODE_ID" ] || fail 'update changed the node identity'
+docker network connect "$NET" awg-node-awg-agent-1  # lab only, re-created container
+
 say 'Subscription served by the STOCK subscription page now contains AWG (installer_awg is in the squad)'
 docker run --rm --network "$NET" awg-dev-tooling:local python -c "
 import time, httpx, yaml
@@ -140,7 +159,7 @@ print('subpage happ: stock only')
 " || fail 'subscription page check'
 
 say 'uninstall.sh restores the stock subscription page'
-./uninstall.sh --dir "$EXT"
+"$EXT/uninstall.sh" --dir "$EXT"
 grep -qx 'REMNAWAVE_PANEL_URL=http://awg-dev-remnawave-1:3000' "$SUB/.env" || fail 'subscription page .env not restored'
 grep -qx 'ADMIN_EDIT_AFTER_INSTALL=kept' "$SUB/.env" || fail 'uninstall rolled back an unrelated operator edit'
 docker run --rm --network "$NET" awg-dev-tooling:local python -c "

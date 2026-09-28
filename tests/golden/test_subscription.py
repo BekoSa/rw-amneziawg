@@ -11,9 +11,9 @@ def test_renderers_exist():
 
 def test_mihomo_golden_and_stock_semantics(peer):
     from subscription_renderers import enrich
-    from awg_capabilities import identify
+    from awg_capabilities import identify, mihomo_core
     stock = b'proxies:\n- name: stock\n  type: direct\nproxy-groups:\n- name: select\n  type: select\n  proxies: [stock]\nrules: ["MATCH,select"]\n'
-    output = enrich(stock, 'application/yaml', identify('mihomo/1.19.30'), [peer])
+    output = enrich(stock, 'application/yaml', identify('mihomo/1.19.30'), [peer], core=mihomo_core('mihomo/1.19.30'))
     expected = Path(__file__).with_name('fixtures').joinpath('mihomo.yaml').read_bytes()
     assert output == expected
     parsed = yaml.safe_load(output)

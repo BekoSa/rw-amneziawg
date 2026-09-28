@@ -20,7 +20,7 @@ Gateway доверяет `X-Forwarded-*` только в этой тополог
 | Клиент (User-Agent) | Формат AWG | AWG 2 | AWG 3.1 | Источник |
 |---|---|---|---|---|
 | AmneziaVPN ≥ 5.0.1.5 | `vpn://` ключ на странице подписки | да | да | `amnezia-client` 5.0.3.0 `importController.cpp`, `awgProtocolConfig.cpp` |
-| Mihomo и приложения на нём (`mihomo`, Clash Verge, FlClash, ClashMeta for Android, ClashX Meta, Nyanpasu, Koala Clash) | `type: wireguard` + `amnezia-wg-option`, для 3.1 `version: 3` | да | да | mihomo v1.19.31 `adapter/outbound/wireguard.go` |
+| Mihomo и приложения на нём (`mihomo`, Clash Verge, FlClash, ClashMeta for Android, ClashX Meta, Nyanpasu, Koala Clash) | приложению — `proxy-providers: AmneziaWG` (см. ниже); самому ядру (`clash.meta/vX`, `mihomo/X`) — `type: wireguard` + `amnezia-wg-option` прямо в `proxies`, для 3.1 `version: 3` | ядро ≥ 1.19.14 | ядро ≥ 1.19.30 | mihomo `adapter/outbound/wireguard.go` (v1.19.13/14/30/31) |
 | Throne (`Throne/…`, последняя 1.3.1) | `wg://…&enable_amnezia=true&jc=…&header_protection_key=…` | да | да | Throne 1.3.1 `src/configs/outbounds/wireguard.cpp` |
 | INCY (`INCY/…`) | `amneziawg://<base64url .conf>#Имя` | да | нет* | incy.gitbook.io `subscription-format` |
 | Прочие клиенты со списком ссылок (v2rayNG, Hiddify …) | та же строка `amneziawg://` (незнакомые схемы клиенты пропускают) | да | нет* | — |
@@ -32,6 +32,40 @@ Gateway доверяет `X-Forwarded-*` только в этой тополог
 
 \* INCY документирует только поля AWG 2 (Jc…I5). Для профиля 3.1 INCY и «прочие» клиенты AWG-строку
 не получают, пока поддержка не подтверждена; пользователям остаются AmneziaVPN, Mihomo и Throne.
+
+### Mihomo: AWG через proxy-provider
+
+Приложения на Mihomo (Clash Verge, FlClash, ClashMeta for Android …) не сообщают версию своего ядра, а
+старое ядро не просто не показывает AWG, а **роняет весь конфиг** (проверено на настоящих ядрах):
+
+| Ядро Mihomo | AWG прямо в `proxies` |
+|---|---|
+| ≤ 1.19.13 | `Parse config error: … h1 as int` — не работает вся подписка, включая Xray |
+| 1.19.14 – 1.19.29 | прокси виден, но AWG 3.1 не работает (нет `header-protection-key` и прочих полей) |
+| ≥ 1.19.30 | работает |
+
+Поэтому приложению Gateway добавляет не сам прокси, а provider:
+
+```yaml
+proxy-providers:
+  AmneziaWG:
+    type: http
+    url: <profile-web-page-url из ответа Remnawave, т.е. https://SUB_PUBLIC_DOMAIN/<shortUuid>>
+    interval: 3600
+    header: {X-AWG-Provider: [mihomo]}
+proxy-groups:
+- name: …
+  use: [AmneziaWG]
+```
+
+Provider скачивает само ядро с User-Agent `clash.meta/v1.19.x`, и Gateway по версии отдаёт только то, что
+ядро выполнит: 3.1 — с 1.19.30, AWG 2 — с 1.19.14, старым ядрам — пустой список. Ошибка разбора provider
+в Mihomo не фатальна: пропадает только AWG. Адрес берётся из `profile-web-page-url` (его строит Remnawave
+из `SUB_PUBLIC_DOMAIN`), поэтому работает и напрямую через reverse proxy, и через subscription-page (она
+пересылает заголовок `X-AWG-Provider`). Доступ к provider сначала проверяет stock. Ядро не шлёт HWID, поэтому
+допускается только ответ «HWID не передан»; лимит устройств проверяется при обновлении подписки
+приложением — без него provider в конфиг не попадает. Если у пользователя нет Xray-хостов и ядро старое,
+группа останется пустой (Mihomo подставит `COMPATIBLE`).
 
 Имя записи во всех форматах — название профиля (например «🇩🇪 Германия · AWG»).
 
@@ -81,7 +115,8 @@ Throne — `true/false`, Mihomo — YAML-булево. Сервер с `HeaderPr
 - Тексты ошибок, токены и ключи не логируются и не возвращаются клиенту. Для диагностики Gateway пишет
   строку на каждую подписку: `subscription client=mihomo awg=added ready_peers=1`, либо
   `awg=unchanged ready_peers=0` (пользователь не в squad профиля или нода профиля не READY/online), либо
-  `awg=skipped reason=…` (`stock-denied`, `no-awg-for-client`, `stock-format-not-extendable` …):
+  `awg=skipped reason=…` (`stock-denied`, `no-awg-for-client`, `stock-format-not-extendable`,
+  `no-https-profile-web-page-url` …); запросы provider — `client=mihomo-provider core=1.19.31 awg=served proxies=1`:
   `docker logs awg-gateway`.
 
 Проверки: golden-тесты `tests/golden/test_client_formats.py`, `tests/golden/test_subscription.py`,

@@ -65,15 +65,59 @@ def test_throne_any_release_gets_amnezia_wg_link(peer):
     assert query['private_key'] == peer.client_private_key.get_secret_value()
 
 
-@pytest.mark.parametrize('ua', ['FlClash/0.8.80', 'clash-verge/v2.2.3', 'mihomo/1.20.1'])
-def test_mihomo_family_gets_wireguard_proxy(peer, ua):
-    from awg_capabilities import identify
+PROVIDER_URL = 'https://sub.example.com/api/sub/abc'
+MIHOMO_STOCK = b'proxies:\n- name: stock\n  type: direct\nproxy-groups:\n- name: select\n  type: select\n  proxies: [stock]\n'
+
+
+def mihomo(stock, ua, peers, provider_url=PROVIDER_URL):
+    from awg_capabilities import identify, mihomo_core
     from subscription_renderers import enrich
-    stock = b'proxies:\n- name: stock\n  type: direct\nproxy-groups:\n- name: select\n  type: select\n  proxies: [stock]\n'
-    parsed = yaml.safe_load(enrich(stock, 'text/yaml', identify(ua), [peer]))
+    return enrich(stock, 'text/yaml', identify(ua), peers, provider_url=provider_url, core=mihomo_core(ua))
+
+
+@pytest.mark.parametrize('ua', ['FlClash/0.8.80', 'clash-verge/v2.2.3', 'ClashMetaForAndroid/2.11.14.Meta'])
+def test_mihomo_apps_get_awg_through_a_provider(peer, ua):
+    """Apps hide their core version: AWG goes into a proxy-provider fetched by the core itself, so an
+    old core loses only that provider instead of failing the whole config."""
+    parsed = yaml.safe_load(mihomo(MIHOMO_STOCK, ua, [peer]))
+    assert [p['name'] for p in parsed['proxies']] == ['stock'], 'no inline AWG for an unknown core'
+    assert parsed['proxy-providers'] == {'AmneziaWG': {'type': 'http', 'url': PROVIDER_URL, 'interval': 3600,
+                                                       'header': {'X-AWG-Provider': ['mihomo']}}}
+    assert parsed['proxy-groups'][0]['proxies'] == ['stock'] and parsed['proxy-groups'][0]['use'] == ['AmneziaWG']
+    assert mihomo(MIHOMO_STOCK, ua, [peer], provider_url=None) == MIHOMO_STOCK, 'no public URL: unchanged'
+
+
+def test_mihomo_provider_body_holds_only_proxies(peer):
+    from subscription_renderers import mihomo_provider
+    parsed = yaml.safe_load(mihomo_provider([peer]))
+    assert list(parsed) == ['proxies'] and parsed['proxies'][0]['type'] == 'wireguard'
+    assert parsed['proxies'][0]['amnezia-wg-option']['jc'] == 4
+    assert yaml.safe_load(mihomo_provider([])) == {'proxies': []}
+
+
+@pytest.mark.parametrize('ua', ['mihomo/1.20.1', 'clash.meta/v1.19.31', 'mihomo/v1.19.14'])
+def test_mihomo_core_gets_inline_proxy(peer, ua):
+    parsed = yaml.safe_load(mihomo(MIHOMO_STOCK, ua, [peer]))
     awg = parsed['proxies'][1]
     assert awg['name'] == peer.name and awg['type'] == 'wireguard' and awg['amnezia-wg-option']['jc'] == 4
-    assert parsed['proxy-groups'][0]['proxies'] == ['stock', peer.name]
+    assert parsed['proxy-groups'][0]['proxies'] == ['stock', peer.name] and 'proxy-providers' not in parsed
+
+
+@pytest.mark.parametrize('ua', ['clash.meta/v1.19.13', 'mihomo/1.18.9'])
+def test_old_mihomo_core_never_gets_header_ranges(peer, ua):
+    # v1.19.13 parses H1-H4 as integers: "a-b" fails the whole config (checked with the real core).
+    assert mihomo(MIHOMO_STOCK, ua, [peer]) == MIHOMO_STOCK
+
+
+def test_mihomo_core_below_1_19_30_gets_no_awg31(peer, peer31):
+    import copy
+    from subscription_renderers import V3_FIELDS
+    awg2 = copy.deepcopy(peer31)  # the peer31 fixture upgrades `peer` in place
+    awg2.name, awg2.protocol.version = 'AWG 2', '2'
+    for field in V3_FIELDS:
+        awg2.protocol.parameters.pop(field, None)
+    parsed = yaml.safe_load(mihomo(MIHOMO_STOCK, 'clash.meta/v1.19.29', [peer31, awg2]))
+    assert [p['name'] for p in parsed['proxies']] == ['stock', 'AWG 2'], 'no AWG 3 device before v1.19.30'
 
 
 @pytest.mark.parametrize('ua,stock', [
@@ -119,7 +163,7 @@ def peer31(peer):
 def test_awg31_mihomo_uses_v3_device_and_kebab_options(peer31):
     from awg_capabilities import identify
     from subscription_renderers import enrich
-    parsed = yaml.safe_load(enrich(b'proxies: []\n', 'text/yaml', identify('mihomo/1.19.31'), [peer31]))
+    parsed = yaml.safe_load(mihomo(b'proxies: []\n', 'mihomo/1.19.31', [peer31]))
     options = parsed['proxies'][0]['amnezia-wg-option']
     assert options['version'] == 3
     assert options['header-protection-key'] == base64.b64encode(b'k' * 32).decode()
@@ -147,7 +191,7 @@ def test_generated_awg31_profile_reaches_every_client_intact(peer):
     peer.protocol.version = '3.1'
     peer.protocol.parameters = random_parameters('3.1')
     params = peer.protocol.parameters
-    options = yaml.safe_load(enrich(b'proxies: []\n', 'text/yaml', identify('mihomo/1.19.31'), [peer]))['proxies'][0]['amnezia-wg-option']
+    options = yaml.safe_load(mihomo(b'proxies: []\n', 'mihomo/1.19.31', [peer]))['proxies'][0]['amnezia-wg-option']
     link = enrich(URI_STOCK, 'text/plain', identify('Throne/1.3.1'), [peer])[len(URI_STOCK):].decode().strip()
     query = {k: v[0] for k, v in parse_qs(urlsplit(link).query).items()}
     conf = RawAWGRenderer().entry(peer)
@@ -194,7 +238,7 @@ def test_mihomo_placeholders_removed_from_proxies_and_groups(peer):
     from subscription_renderers import enrich
     stock = ('proxies:\n- {name: "→ No hosts found", type: vless, server: 0.0.0.0, port: 1, uuid: 00000000-0000-0000-0000-000000000000}\n'
              'proxy-groups:\n- {name: select, type: select, proxies: ["→ No hosts found"]}\nrules: ["MATCH,select"]\n').encode()
-    parsed = yaml.safe_load(enrich(stock, 'text/yaml', identify('mihomo/1.19.31'), [peer]))
+    parsed = yaml.safe_load(mihomo(stock, 'mihomo/1.19.31', [peer]))
     assert [p['name'] for p in parsed['proxies']] == [peer.name]
     assert parsed['proxy-groups'][0]['proxies'] == [peer.name]
 
@@ -220,6 +264,6 @@ def test_mihomo_stock_template_group_named_like_placeholder(peer):
                                          'uuid': '00000000-0000-0000-0000-000000000000'} for n in names],
                             'proxy-groups': [{'name': '→ Remnawave', 'type': 'select', 'proxies': names}],
                             'rules': ['MATCH,→ Remnawave']}, allow_unicode=True).encode()
-    parsed = yaml.safe_load(enrich(stock, 'text/yaml', identify('mihomo/1.19.31'), [peer]))
+    parsed = yaml.safe_load(mihomo(stock, 'mihomo/1.19.31', [peer]))
     assert [p['name'] for p in parsed['proxies']] == [peer.name]
     assert parsed['proxy-groups'][0]['proxies'] == [peer.name] and parsed['rules'] == ['MATCH,→ Remnawave']

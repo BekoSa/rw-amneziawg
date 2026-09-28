@@ -52,6 +52,26 @@ _PREFIXED = [('throne', re.compile(r'throne/', re.IGNORECASE)), ('incy', re.comp
              ('happ', re.compile(r'happ/', re.IGNORECASE))]
 
 
+# Mihomo core versions (MetaCubeX/mihomo adapter/outbound/wireguard.go): header ranges H1-H4 are strings
+# since v1.19.14 (v1.19.13 and older reject "a-b" and fail the whole config), AWG 3 device since v1.19.30.
+MIHOMO_MIN = {('amneziawg-go-v3', '2'): (1, 19, 14), ('amneziawg-go-v3', '3.1'): (1, 19, 30)}
+_MIHOMO_CORE = re.compile(r'^(?:clash\.meta|mihomo)/v?(\d+)\.(\d+)\.(\d+)', re.IGNORECASE)
+
+
+def mihomo_core(user_agent: str) -> tuple[int, int, int] | None:
+    """Core version when the Mihomo core itself sends the request (default UA `clash.meta/v1.19.31`,
+    also used for proxy-provider fetches). Apps (`clash-verge/…`, `FlClash/…`) do not reveal their core."""
+    match = _MIHOMO_CORE.match(user_agent.strip())
+    return tuple(int(part) for part in match.groups()) if match else None
+
+
+def mihomo_core_supports(core: tuple[int, int, int] | None, protocol: ProtocolSpec) -> bool:
+    """Unknown core: allowed, because it is only used inside a proxy-provider, where a parse error loses
+    that provider and never the rest of the subscription."""
+    minimum = MIHOMO_MIN.get((protocol.adapter_id, protocol.version))
+    return minimum is not None and (core is None or core >= minimum)
+
+
 def identify(user_agent: str) -> ClientCapability:
     agent = user_agent.strip()
     for family, pattern in _PREFIXED:

@@ -15,8 +15,9 @@ from fastapi import FastAPI, Request
 from starlette.responses import Response, StreamingResponse
 
 from awg_contracts import SubscriptionMaterial
-from awg_capabilities import FAMILIES, identify
-from subscription_renderers import RawAWGRenderer, accepts, enrich, enrich_info, info_document
+from awg_capabilities import FAMILIES, identify, mihomo_core, mihomo_core_supports
+from subscription_renderers import (PROVIDER_HEADER, RawAWGRenderer, accepts, enrich, enrich_info, info_document,
+                                    mihomo_provider)
 
 log = logging.getLogger('uvicorn.error')
 
@@ -97,6 +98,16 @@ def sanitize_headers(raw: list[tuple[bytes, bytes]], *, request=False, trust_for
     if request and trust_forwarded and not any(name.lower() == b'x-forwarded-proto' for name, _ in headers):
         headers.append((b'x-forwarded-proto', b'https'))  # stock only serves requests marked as TLS-terminated
     return headers
+
+
+def public_url(upstream: httpx.Response) -> str | None:
+    """Stock's own public subscription URL (`profile-web-page-url`, from SUB_PUBLIC_DOMAIN): reachable by
+    clients in every topology (direct, reverse proxy, subscription page), unlike the Gateway's own address."""
+    url = upstream.headers.get('profile-web-page-url', '')
+    parts = urlsplit(url)
+    if parts.scheme != 'https' or not parts.netloc or any(c in url for c in '\r\n "\'<>'):
+        return None
+    return url
 
 
 def conf_filename(name: str) -> str:
@@ -241,6 +252,32 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
             'cache-control': 'private, no-store',
             'content-disposition': f'attachment; filename="{conf_filename(peer.name)}"'})
 
+    async def awg_provider(request: Request, token: str):
+        """Mihomo proxy-provider with this user's AWG, fetched by the core itself (UA `clash.meta/vX`).
+        Stock decides access first. The core sends no HWID, so only a missing HWID is tolerated: HWID
+        limits are enforced on the app's own subscription fetch, which alone adds this provider."""
+        upstream = await send_stock(request, (config.subscription_prefix + token).encode(), b'')
+        await upstream.aclose()
+        core = mihomo_core(request.headers.get('user-agent', ''))
+        version = '.'.join(map(str, core)) if core else 'unknown'
+        if (upstream.status_code != 200 or any(h in upstream.headers for h in HWID_BLOCKED if h != 'x-hwid-not-supported')
+                or not config.controller_token):
+            log.info('subscription client=mihomo-provider core=%s awg=skipped reason=stock-denied', version)
+            return Response(status_code=upstream.status_code if upstream.status_code != 200 else 403,
+                            headers={'cache-control': 'no-store'})
+        try:
+            async with asyncio.timeout(config.enrichment_timeout):
+                peers = [p for p in (await material(token)).peers
+                         if FAMILIES['mihomo'].supports(p.protocol) and mihomo_core_supports(core, p.protocol)]
+            body = mihomo_provider(peers)
+        except Exception as error:
+            # 503 keeps the provider the core already has; never include exception text.
+            app.state.render_errors += 1
+            log.warning('subscription client=mihomo-provider core=%s awg=failed error=%s', version, type(error).__name__)
+            return Response(status_code=503, headers={'cache-control': 'no-store'})
+        log.info('subscription client=mihomo-provider core=%s awg=served proxies=%d', version, len(peers))
+        return Response(body, media_type='text/yaml; charset=utf-8', headers={'cache-control': 'private, no-store'})
+
     @app.api_route('/{path:path}', methods=['GET', 'HEAD'])
     async def proxy(request: Request, path: str):
         # Only stock subscription routes are exposed; stock admin/auth API stays unreachable.
@@ -250,6 +287,11 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
         if allowed_path.fullmatch(raw) is None and not passthrough:
             return Response(status_code=404, headers={'cache-control': 'no-store'})
         matched = None if passthrough else route.fullmatch(request.url.path)
+        if matched and matched['suffix'] is None and request.method == 'GET' and request.headers.get(PROVIDER_HEADER) == 'mihomo':
+            try:
+                return await awg_provider(request, matched['token'])
+            except httpx.HTTPError:
+                return Response('Stock subscription unavailable', status_code=502, headers={'cache-control': 'no-store'})
         if matched and matched['suffix'] == 'awg' and request.method == 'GET':
             try:
                 return await awg_conf(request, matched['token'])
@@ -299,6 +341,11 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
         if eligible and not (info_document(stock) if info else accepts(stock, cap)):
             log.info('subscription client=%s awg=skipped reason=stock-format-not-extendable', client)
             eligible = False
+        core = mihomo_core(request.headers.get('user-agent', ''))
+        if eligible and not info and cap.renderer == 'mihomo' and core is None and public_url(upstream) is None:
+            # An app (core version unknown) gets AWG only through the provider at stock's public URL.
+            log.info('subscription client=%s awg=skipped reason=no-https-profile-web-page-url', client)
+            eligible = False
         if not eligible:
             return stream_back(upstream, buffered, iterator)
         await upstream.aclose()
@@ -309,7 +356,8 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
                 if info:
                     result = enrich_info(stock, peers.peers)
                 else:
-                    result = enrich(stock, upstream.headers.get('content-type', ''), cap, peers.peers)
+                    result = enrich(stock, upstream.headers.get('content-type', ''), cap, peers.peers,
+                                    provider_url=public_url(upstream), core=core)
             # Counts only, never tokens or keys. "no ready AWG" = user not in a profile squad, or the
             # profile's node is not READY/online (see `awg status`).
             log.info('subscription client=%s awg=%s ready_peers=%d', client,

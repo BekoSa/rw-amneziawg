@@ -187,6 +187,13 @@ def test_connect():
         assert any(line.startswith('wg://') and 'header_protection_key=' in line for line in throne.splitlines())
         page = subscription(alice['shortUuid'], {'user-agent': 'Remnawave Subscription Page'}, path='/info')
         assert any(link.startswith('vpn://') for link in page.json()['response']['links'])
+        # Mihomo apps (core version unknown) get a provider at stock's public URL; the core fetches it.
+        app = yaml.safe_load(subscription(alice['shortUuid'], {'user-agent': 'clash-verge/v2.4.2'}).text)
+        assert app['proxy-providers']['AmneziaWG']['url'].endswith('/' + alice['shortUuid'])
+        assert not any(p.get('type') == 'wireguard' for p in app['proxies'])
+        provider = {'x-awg-provider': 'mihomo'}
+        assert awg_proxy(subscription(alice['shortUuid'], provider | {'user-agent': 'clash.meta/v1.19.31'}))['private-key'] == proxy['private-key']
+        assert awg_proxy(subscription(alice['shortUuid'], provider | {'user-agent': 'clash.meta/v1.19.13'})) is None
         conf = subscription(alice['shortUuid'], {'user-agent': 'AmneziaWG/2.0'}, path='/awg')
         assert conf.status_code == 200 and 'HeaderProtectionKey = ' in conf.text
 

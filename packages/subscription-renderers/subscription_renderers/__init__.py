@@ -13,7 +13,7 @@ from urllib.parse import quote, urlencode
 import yaml
 from yaml.events import AliasEvent
 from awg_contracts import SubscriptionPeer
-from awg_capabilities import FAMILIES, ClientCapability
+from awg_capabilities import FAMILIES, ClientCapability, mihomo_core_supports
 
 AWG2_FIELDS = ('Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'S3', 'S4', 'H1', 'H2', 'H3', 'H4',
                'I1', 'I2', 'I3', 'I4', 'I5')
@@ -227,8 +227,51 @@ class StrictLoader(yaml.SafeLoader):
         return super().construct_mapping(node, deep)
 
 
+def mihomo_proxy(peer: SubscriptionPeer) -> dict:
+    validate_peer(peer)
+    # Mihomo (v1.19.31 adapter/outbound/wireguard.go) runs its AWG 3 device only for version == 3;
+    # 3.x options use kebab-case names and real booleans.
+    options = {snake(field).replace('_', '-'): option_value(field, peer.protocol.parameters[field])
+               for field in AWG_FIELDS if field in peer.protocol.parameters}
+    options = {'version': 3 if peer.protocol.version == '3.1' else 2, **options}
+    proxy = {'name': peer.name, 'type': 'wireguard', 'ip': peer.ipv4_address + '/32',
+             'private-key': peer.client_private_key.get_secret_value(), 'udp': True, 'mtu': peer.mtu,
+             'persistent-keepalive': 25,
+             'peers': [{'server': peer.endpoint.host, 'port': peer.endpoint.port,
+                        'public-key': peer.server_public_key, 'allowed-ips': peer.allowed_ips}],
+             'amnezia-wg-option': options}
+    if peer.ipv6_address:
+        proxy['ipv6'] = peer.ipv6_address + '/128'
+    if peer.dns_servers:
+        proxy.update({'remote-dns-resolve': True, 'dns': peer.dns_servers})
+    return proxy
+
+
+def mihomo_provider(peers: list[SubscriptionPeer]) -> bytes:
+    """Body of the AWG proxy-provider: only `proxies`, as Mihomo expects from an http provider."""
+    proxies, names = [], set()
+    for peer in peers:
+        try:
+            proxy = mihomo_proxy(peer)
+        except Unsupported:
+            continue
+        if proxy['name'] not in names:
+            names.add(proxy['name'])
+            proxies.append(proxy)
+    return yaml.safe_dump({'proxies': proxies}, allow_unicode=True, sort_keys=False, width=4096).encode()
+
+
+# Proxy-provider carrying AWG for Mihomo apps. The core fetches it itself (UA `clash.meta/vX`), so the
+# Gateway can match AWG to the core version, and a core that cannot parse it loses only this provider:
+# an inline proxy it cannot parse fails the whole config (checked with mihomo v1.19.13).
+MIHOMO_PROVIDER = 'AmneziaWG'
+PROVIDER_HEADER = 'x-awg-provider'
+
+
 class MihomoRenderer:
-    def render(self, stock: bytes, peers: list[SubscriptionPeer]) -> bytes:
+    def render(self, stock: bytes, peers: list[SubscriptionPeer], provider_url: str | None = None) -> bytes:
+        """Inline proxies (`provider_url` None: the core version is known and checked by the caller) or
+        a reference to the AWG provider at `provider_url` (the stock public subscription URL)."""
         parsed = yaml.load(stock.decode('utf-8'), Loader=StrictLoader)
         if not isinstance(parsed, dict) or not isinstance(parsed.get('proxies'), list):
             raise Unsupported('not Mihomo subscription')
@@ -241,29 +284,21 @@ class MihomoRenderer:
         names = {p['name'] for p in existing} | {g.get('name') for g in groups}
         added = []
         for peer in peers:
-            validate_peer(peer)
+            proxy = mihomo_proxy(peer)
             if peer.name in names:
                 continue
-            # Mihomo (v1.19.31 adapter/outbound/wireguard.go) runs its AWG 3 device only for version == 3;
-            # 3.x options use kebab-case names and real booleans.
-            options = {snake(field).replace('_', '-'): option_value(field, peer.protocol.parameters[field])
-                       for field in AWG_FIELDS if field in peer.protocol.parameters}
-            options = {'version': 3 if peer.protocol.version == '3.1' else 2, **options}
-            proxy = {'name': peer.name, 'type': 'wireguard', 'ip': peer.ipv4_address + '/32',
-                     'private-key': peer.client_private_key.get_secret_value(), 'udp': True, 'mtu': peer.mtu,
-                     'persistent-keepalive': 25,
-                     'peers': [{'server': peer.endpoint.host, 'port': peer.endpoint.port,
-                                'public-key': peer.server_public_key, 'allowed-ips': peer.allowed_ips}],
-                     'amnezia-wg-option': options}
-            if peer.ipv6_address:
-                proxy['ipv6'] = peer.ipv6_address + '/128'
-            if peer.dns_servers:
-                proxy.update({'remote-dns-resolve': True, 'dns': peer.dns_servers})
-            existing.append(proxy)
+            if provider_url is None:
+                existing.append(proxy)
             names.add(peer.name)
             added.append(peer.name)
         if not added:
             return stock
+        if provider_url is not None:
+            providers = parsed.setdefault('proxy-providers', {})
+            if not isinstance(providers, dict) or MIHOMO_PROVIDER in providers:
+                raise Unsupported('provider name taken')
+            providers[MIHOMO_PROVIDER] = {'type': 'http', 'url': provider_url, 'interval': 3600,
+                                          'header': {'X-AWG-Provider': ['mihomo']}}
         placeholders = {p['name'] for p in existing if p.get('server') == '0.0.0.0' and p.get('port') == 1}
         rules = parsed.get('rules') if isinstance(parsed.get('rules'), list) else []
         # Keep placeholders if a rule targets one directly (not a same-named group, as in the stock
@@ -277,7 +312,11 @@ class MihomoRenderer:
         for group in groups:
             if isinstance(group.get('proxies'), list) and (
                     group.get('type') in ('select', 'url-test', 'fallback', 'load-balance') or not group['proxies']):
-                group['proxies'].extend(added)
+                if provider_url is None:
+                    group['proxies'].extend(added)
+                else:
+                    use = group.get('use') if isinstance(group.get('use'), list) else []
+                    group['use'] = use + [MIHOMO_PROVIDER]
         return yaml.safe_dump(parsed, allow_unicode=True, sort_keys=False, width=4096).encode()
 
 
@@ -303,16 +342,24 @@ def accepts(stock: bytes, capability: ClientCapability | None) -> bool:
 
 
 def enrich(stock: bytes, content_type: str, capability: ClientCapability | None,
-           peers: list[SubscriptionPeer]) -> bytes:
-    """Add AWG in the client's own format; any doubt returns the stock bytes unchanged."""
+           peers: list[SubscriptionPeer], provider_url: str | None = None,
+           core: tuple[int, int, int] | None = None) -> bytes:
+    """Add AWG in the client's own format; any doubt returns the stock bytes unchanged.
+    Mihomo: `core` known (the core itself asks) → inline proxies it can run; otherwise (an app) → a
+    reference to the AWG provider at `provider_url`, or nothing without one."""
     if capability is None or capability.renderer is None or len(stock) > 2 * 1024 * 1024:
         return stock
     compatible = [p for p in peers if capability.supports(p.protocol)]
+    if capability.renderer == 'mihomo':
+        if core is not None:
+            compatible = [p for p in compatible if mihomo_core_supports(core, p.protocol)]
+        elif not provider_url:
+            return stock
     if not compatible:
         return stock
     try:
         if capability.renderer == 'mihomo':
-            return MihomoRenderer().render(stock, compatible)
+            return MihomoRenderer().render(stock, compatible, None if core is not None else provider_url)
         renderer = LINE_RENDERERS[capability.renderer]()
         entries = []
         for peer in compatible:

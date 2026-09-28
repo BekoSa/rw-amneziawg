@@ -181,6 +181,60 @@ async def test_empty_material_is_logged_without_secrets(caplog):
     assert 'client=mihomo awg=unchanged ready_peers=0' in caplog.text and 'service-secret' not in caplog.text
 
 
+STOCK_MIHOMO = b'proxies:\n- name: stock\n  type: direct\nproxy-groups:\n- name: select\n  type: select\n  proxies: [stock]\n'
+
+
+@pytest.mark.asyncio
+async def test_mihomo_app_gets_provider_at_stock_public_url():
+    import yaml
+    def stock(req):
+        return httpx.Response(200, content=STOCK_MIHOMO, headers={'content-type': 'text/yaml',
+                              'profile-web-page-url': 'https://sub.example.com/api/sub/valid-token'})
+    response = await request(stock, lambda req: httpx.Response(200, json=material()),
+                             headers={'user-agent': 'clash-verge/v2.4.2'})
+    parsed = yaml.safe_load(response.content)
+    assert parsed['proxy-providers']['AmneziaWG']['url'] == 'https://sub.example.com/api/sub/valid-token'
+    assert [p['name'] for p in parsed['proxies']] == ['stock']
+    plain = await request(lambda req: httpx.Response(200, content=STOCK_MIHOMO, headers={'content-type': 'text/yaml',
+                          'profile-web-page-url': 'http://sub.example.com/x'}),
+                          lambda req: pytest.fail('no material without a usable public URL'),
+                          headers={'user-agent': 'clash-verge/v2.4.2'})
+    assert plain.content == STOCK_MIHOMO
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('ua,count', [('clash.meta/v1.19.31', 1), ('clash.meta/v1.19.13', 0), ('mihomo/unknown', 1)])
+async def test_mihomo_provider_matches_core_version(ua, count):
+    import yaml
+    seen = []
+    def stock(req):
+        seen.append(req)
+        return httpx.Response(200, content=STOCK_MIHOMO, headers={'x-hwid-not-supported': 'true'})
+    response = await request(stock, lambda req: httpx.Response(200, json=material()),
+                             headers={'user-agent': ua, 'x-awg-provider': 'mihomo'})
+    assert response.status_code == 200 and response.headers['cache-control'] == 'private, no-store'
+    assert len(yaml.safe_load(response.content)['proxies']) == count
+    assert seen[0].url.path == '/api/sub/valid-token' and 'x-awg-provider' not in seen[0].headers
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status,headers', [(200, {'x-hwid-max-devices-reached': 'true'}), (404, {})])
+async def test_mihomo_provider_respects_stock_denial(status, headers):
+    response = await request(lambda req: httpx.Response(status, content=b'denied', headers=headers),
+                             lambda req: pytest.fail('no material'),
+                             headers={'user-agent': 'clash.meta/v1.19.31', 'x-awg-provider': 'mihomo'})
+    assert response.status_code in (403, 404) and b'wireguard' not in response.content
+
+
+@pytest.mark.asyncio
+async def test_mihomo_provider_keeps_core_cache_on_controller_failure():
+    def broken(req):
+        raise httpx.ConnectError('down')
+    response = await request(lambda req: httpx.Response(200, content=STOCK_MIHOMO), broken,
+                             headers={'user-agent': 'clash.meta/v1.19.31', 'x-awg-provider': 'mihomo'})
+    assert response.status_code == 503
+
+
 @pytest.mark.asyncio
 async def test_awg_conf_download_requires_stock_access_first():
     seen = []

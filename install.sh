@@ -221,13 +221,13 @@ set_env "$ENV_FILE" AWG_GATEWAY_SUBPAGE_PASSTHROUGH "$PASSTHROUGH"
 say 'Creating the management PKI'
 dc --profile tools run --rm -T pki-init
 say 'Starting Controller, Gateway and database'
-dc up -d --wait --pull never awg-db controller gateway
+dc up -d --wait --pull missing awg-db controller gateway
 # Admin/internal Controller API: only from the extension's internal network (TUI, Gateway), not from
 # other containers on the panel network.
 AWG_SUBNET=$(docker network inspect "awg-extension_awg" -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' | awk '{print $1}')
 if [ -n "$AWG_SUBNET" ] && [ "$(get_env AWG_ADMIN_ALLOWED_CIDRS)" != "$AWG_SUBNET" ]; then
     set_env "$ENV_FILE" AWG_ADMIN_ALLOWED_CIDRS "$AWG_SUBNET"
-    dc up -d --wait --pull never controller
+    dc up -d --wait --pull missing controller
 fi
 
 if [ "${ROUTE_SUBPAGE:-0}" = 1 ]; then
@@ -255,19 +255,39 @@ if [ -f "$PANEL_DIR/.env" ] && ! grep -q "$HOOK" "$PANEL_DIR/.env" && \
         change_stock "$PANEL_DIR/.env" WEBHOOK_URL "$HOOK" "$PANEL"
         change_stock "$PANEL_DIR/.env" WEBHOOK_SECRET_HEADER "$(get_env AWG_WEBHOOK_SECRET)" "$PANEL"
     fi
-    dc up -d --wait --pull never controller
+    dc up -d --wait --pull missing controller
     say 'Restarting the panel to load webhook settings'
     restart_stock "$PANEL"
 fi
 
 # ---------------------------------------------------------------- admin command
-{
-    echo '#!/bin/sh'
-    echo '# AWG extension terminal UI. Examples: ./awg   ./awg status   ./awg peers'
-    echo 'tty=; [ -t 0 ] || tty=-T'
-    printf 'exec docker compose -f %s --env-file %s --profile tools run --rm $tty tui python -m awg_tui "$@"\n' \
-        "'$DIR/compose.yaml'" "'$ENV_FILE'"
-} > "$DIR/awg"
+cat > "$DIR/awg" <<'WRAPPER'
+#!/bin/sh
+# AWG extension administration.
+#   awg              terminal UI        awg status | peers | reconcile   one-shot commands
+#   awg set-token    replace the Remnawave API token (they expire; see `awg status`)
+set -eu
+DIR=@DIR@
+dc() { docker compose -f "$DIR/compose.yaml" --env-file "$DIR/.env" "$@"; }
+if [ "${1:-}" = set-token ]; then
+    printf 'New Remnawave API token (Settings -> API tokens): '
+    stty -echo 2>/dev/null || true; read -r REMNAWAVE_API_TOKEN; stty echo 2>/dev/null || true; echo
+    [ -n "$REMNAWAVE_API_TOKEN" ] || { echo 'No token entered' >&2; exit 1; }
+    export REMNAWAVE_API_TOKEN  # passed by name only: never visible in ps/argv
+    dc --profile tools run --rm -T -e REMNAWAVE_API_TOKEN check-remnawave >/dev/null ||
+        { echo 'Remnawave rejected this token; nothing changed' >&2; exit 1; }
+    tmp=$(mktemp "$DIR/.env.XXXXXX")
+    awk 'index($0, "REMNAWAVE_API_TOKEN=") == 1 { print "REMNAWAVE_API_TOKEN=" ENVIRON["REMNAWAVE_API_TOKEN"]; next } { print }' \
+        "$DIR/.env" > "$tmp"
+    chmod 600 "$tmp" && mv "$tmp" "$DIR/.env"
+    dc up -d --wait --pull missing controller
+    echo 'Token replaced; the Controller was restarted with it.'
+    exit 0
+fi
+tty=; [ -t 0 ] || tty=-T
+exec docker compose -f "$DIR/compose.yaml" --env-file "$DIR/.env" --profile tools run --rm $tty tui python -m awg_tui "$@"
+WRAPPER
+tmp=$(mktemp); sed "s|@DIR@|'$DIR'|" "$DIR/awg" > "$tmp" && cat "$tmp" > "$DIR/awg" && rm -f "$tmp"
 chmod 700 "$DIR/awg"
 
 say 'Done'

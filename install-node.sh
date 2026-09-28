@@ -130,7 +130,7 @@ else
     unset SECRET
 fi
 say "Starting the Agent (node $NODE_ID)"
-dc up -d --pull never --force-recreate
+dc up -d --pull missing --force-recreate
 say 'Done'
 printf '\n  Node %s is running. Management API: TCP %s (mutual TLS), AmneziaWG: UDP %s.\n' "$NODE_ID" "$MANAGEMENT_PORT" "$UDP_PORTS"
 printf '  Docker-published ports bypass UFW. To allow management only from your panel server, e.g.:\n'

@@ -5,7 +5,9 @@ The extension keys everything by a stable UUID: 2.x uses the upstream UUID verba
 3.x derives UUIDv5 from the numeric id. `upstream_id` keeps the value needed for
 targeted API lookups. Nothing outside this module depends on the upstream DTO shape.
 """
-from datetime import datetime
+import base64
+import json
+from datetime import datetime, timezone
 from uuid import UUID, uuid5
 import hashlib
 import hmac
@@ -16,7 +18,21 @@ from awg_contracts import RemnawaveUser
 
 
 class UpstreamError(RuntimeError):
-    pass
+    """Remnawave unreachable or rejected the request; `unauthorized` = the API token was refused."""
+    def __init__(self, message='Remnawave fetch failed', *, unauthorized=False):
+        super().__init__(message)
+        self.unauthorized = unauthorized
+
+
+def token_expiry(token: str):
+    """Expiry of a Remnawave API token (a JWT) from its `exp` claim; None if not readable.
+    Only a hint for operators: the signature is not (and cannot be) checked here."""
+    try:
+        payload = token.split('.')[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
+        return datetime.fromtimestamp(int(claims['exp']), timezone.utc)
+    except (IndexError, KeyError, TypeError, ValueError):
+        return None
 
 
 class Squad(BaseModel):
@@ -83,6 +99,7 @@ def verify_webhook(body: bytes, signature: str, secret: str) -> bool:
 
 class RemnawaveClient:
     def __init__(self, base_url: str, token: str, *, transport=None):
+        self.token_expires_at = token_expiry(token)
         headers = {'Authorization': 'Bearer '+token}
         if base_url.startswith('http://'):
             # Internal Docker-network access to stock, as the official subscription page does it.
@@ -99,6 +116,8 @@ class RemnawaveClient:
             response = await self.http.get(path, params=params)
             if missing and response.status_code == 404:
                 return None
+            if response.status_code in (401, 403):
+                raise UpstreamError('Remnawave rejected the API token', unauthorized=True)
             response.raise_for_status()
             body = response.json()
             if not isinstance(body, dict) or 'response' not in body:

@@ -174,6 +174,16 @@ def create_app(controller=None):
         await s.rotate_user_key(user_uuid)
         return {'accepted':True}
 
+    @app.get('/api/v1/remnawave/token')
+    async def token(s=Depends(admin)):
+        expires = getattr(s.upstream, 'token_expires_at', None)
+        async with s.db.connect() as conn:
+            last = await rows(conn,"SELECT code,created_at FROM awg_errors WHERE code IN ('REMNAWAVE_TOKEN_REJECTED','RECONCILE_FAILED') ORDER BY id DESC LIMIT 1")
+        rejected = bool(last) and last[0]['code'] == 'REMNAWAVE_TOKEN_REJECTED' and (
+            s.last_upstream_ok is None or last[0]['created_at'] > s.last_upstream_ok)
+        return {'expires_at': expires, 'days_left': (expires - datetime.now(timezone.utc)).days if expires else None,
+                'rejected': rejected, 'last_success': s.last_upstream_ok}
+
     @app.get('/api/v1/remnawave/squads')
     async def squads(s=Depends(admin)):
         return {'items':await s.upstream.squads()}

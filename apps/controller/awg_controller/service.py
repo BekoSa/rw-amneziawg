@@ -41,10 +41,11 @@ class Controller:
                 await self.reconcile()
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as failure:
                 self.metrics['reconcile_errors'] += 1
                 try:
-                    await self.error('RECONCILE_FAILED')
+                    # An expired/revoked API token is the most common cause and needs an operator: name it.
+                    await self.error('REMNAWAVE_TOKEN_REJECTED' if getattr(failure, 'unauthorized', False) else 'RECONCILE_FAILED')
                 except Exception:
                     pass
             try:

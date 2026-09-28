@@ -125,7 +125,8 @@ def test_node_bundle_is_signed_by_extension_ca(tmp_path):
                                                         serialization.NoEncryption()))
     (tmp_path / 'ca.crt').write_bytes(ca.public_bytes(serialization.Encoding.PEM))
     node = UUID('00000000-0000-4000-8000-0000000000bb')
-    bundle = parse_bundle(node_bundle(tmp_path, '00000000-0000-4000-8000-000000000002', node))
+    bundle = parse_bundle(node_bundle(tmp_path, '00000000-0000-4000-8000-000000000002', node, management_port=2525))
+    assert bundle['management_port'] == 2525, 'the port chosen in the TUI travels with the key'
     cert = x509.load_pem_x509_certificate(bundle['cert'].encode())
     cert.verify_directly_issued_by(ca)
     assert cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.DNSName) \

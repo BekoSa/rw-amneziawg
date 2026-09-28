@@ -41,7 +41,11 @@ def enroll(secret: str, directory: Path):
         path = directory / name
         path.write_text(payload[field])
         path.chmod(mode)
-    (directory / 'node.env').write_text(f'AWG_NODE_ID={node}\nAWG_CONTROLLER_ID={controller}\n')
+    port = payload.get('management_port', 8443)
+    if not isinstance(port, int) or not 1 <= port <= 65535:
+        raise ValueError('invalid management port in node key')
+    # AWG_NODE_MANAGEMENT_PORT is the published host port (the Agent itself always listens on 8443 inside).
+    (directory / 'node.env').write_text(f'AWG_NODE_ID={node}\nAWG_CONTROLLER_ID={controller}\nAWG_NODE_MANAGEMENT_PORT={port}\n')
     (directory / 'node.env').chmod(0o644)  # identities only, read by the compose client
     return node
 

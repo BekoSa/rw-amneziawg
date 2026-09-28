@@ -79,11 +79,12 @@ echo 'ADMIN_EDIT_AFTER_INSTALL=kept' >> "$SUB/.env"  # an operator edit that uni
 
 say 'Node key issued in the TUI container, then install-node.sh'
 SECRET=$(docker compose -f "$EXT/compose.yaml" --env-file "$EXT/.env" --profile tools run --rm -T tui python -c \
-  "import os,uuid; from pathlib import Path; from awg_tui.pki import node_bundle; print(node_bundle(Path('/pki-ca'), os.environ['AWG_CONTROLLER_ID'], uuid.uuid4()))")
+  "import os,uuid; from pathlib import Path; from awg_tui.pki import node_bundle; print(node_bundle(Path('/pki-ca'), os.environ['AWG_CONTROLLER_ID'], uuid.uuid4(), management_port=18445))")
 printf '%s' "$SECRET" > "$ROOT/node.key"; chmod 600 "$ROOT/node.key"
 AWG_NODE_INTERNAL_NETWORK=true "$ROOT/standalone/install-node.sh" --dir "$NODE" --secret-file "$ROOT/node.key" \
-    --management-port 18445 --management-bind 127.0.0.1 --udp-bind 127.0.0.1 --image-registry "$REG" --image-tag lab --no-pull
+    --management-bind 127.0.0.1 --udp-bind 127.0.0.1 --image-registry "$REG" --image-tag lab --no-pull
 NODE_ID=$(sed -n 's/^AWG_NODE_ID=//p' "$NODE/pki/node.env")
+[ "$(sed -n 's/^AWG_MANAGEMENT_PORT=//p' "$NODE/.env")" = 18445 ] || fail 'management port from the TUI was not taken from the node key'
 PORT=$(sed -n 's/^AWG_UDP_PORTS=//p' "$NODE/.env")
 [ "$PORT" -ge 20000 ] && [ "$PORT" -le 59999 ] || fail "install-node.sh did not pick a random high UDP port: $PORT"
 say "install-node.sh picked random UDP port $PORT"
@@ -130,9 +131,10 @@ PY
 [ -n "$ADMIN" ] || fail 'no admin token'
 
 say 'Re-run install-node.sh as an update: no key is asked, the port and identity stay'
-AWG_NODE_INTERNAL_NETWORK=true "$ROOT/standalone/install-node.sh" --dir "$NODE" --management-port 18445 \
+AWG_NODE_INTERNAL_NETWORK=true "$ROOT/standalone/install-node.sh" --dir "$NODE" \
     --management-bind 127.0.0.1 --udp-bind 127.0.0.1 --image-registry "$REG" --image-tag lab --no-pull < /dev/null
 [ "$(sed -n 's/^AWG_UDP_PORTS=//p' "$NODE/.env")" = "$PORT" ] || fail 'update changed the UDP port'
+[ "$(sed -n 's/^AWG_MANAGEMENT_PORT=//p' "$NODE/.env")" = 18445 ] || fail 'update changed the management port'
 [ "$(sed -n 's/^AWG_NODE_ID=//p' "$NODE/pki/node.env")" = "$NODE_ID" ] || fail 'update changed the node identity'
 docker network connect "$NET" awg-node-awg-agent-1  # lab only, re-created container
 

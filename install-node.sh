@@ -9,7 +9,7 @@ SOURCE_DIR=$(cd "$(dirname "$0")" && pwd)
 DIR=/opt/awg-node
 SECRET_FILE=''
 UDP_PORTS=''
-MANAGEMENT_PORT=8443
+MANAGEMENT_PORT=''  # default: the port chosen in the TUI (carried by the node key), else 8443
 MANAGEMENT_BIND=0.0.0.0
 REGISTRY=''
 REF=main
@@ -88,16 +88,21 @@ else
     cp "$SOURCE_DIR/deploy/production/node.compose.yaml" "$DIR/compose.yaml"
     BUILD_DIR=$SOURCE_DIR
 fi
-{
-    echo "AWG_SOURCE_DIR=$BUILD_DIR"
-    echo "AWG_UDP_PORTS=$UDP_PORTS"
-    echo "AWG_UDP_BIND=$UDP_BIND"
-    echo "AWG_MANAGEMENT_PORT=$MANAGEMENT_PORT"
-    echo "AWG_MANAGEMENT_BIND=$MANAGEMENT_BIND"
-    [ -z "${AWG_NODE_INTERNAL_NETWORK:-}" ] || echo "AWG_NODE_INTERNAL_NETWORK=$AWG_NODE_INTERNAL_NETWORK"
-    [ -z "$REGISTRY" ] || echo "AWG_AGENT_IMAGE=$REGISTRY/agent:$IMAGE_TAG"
-} > "$DIR/.env"
-chmod 600 "$DIR/.env"
+# Precedence: --management-port > the previous install (update) > the node key > 8443.
+[ -n "$MANAGEMENT_PORT" ] || MANAGEMENT_PORT=$(sed -n 's/^AWG_MANAGEMENT_PORT=//p' "$DIR/.env" 2>/dev/null | head -1)
+write_env() {
+    {
+        echo "AWG_SOURCE_DIR=$BUILD_DIR"
+        echo "AWG_UDP_PORTS=$UDP_PORTS"
+        echo "AWG_UDP_BIND=$UDP_BIND"
+        echo "AWG_MANAGEMENT_PORT=${MANAGEMENT_PORT:-8443}"
+        echo "AWG_MANAGEMENT_BIND=$MANAGEMENT_BIND"
+        [ -z "${AWG_NODE_INTERNAL_NETWORK:-}" ] || echo "AWG_NODE_INTERNAL_NETWORK=$AWG_NODE_INTERNAL_NETWORK"
+        [ -z "$REGISTRY" ] || echo "AWG_AGENT_IMAGE=$REGISTRY/agent:$IMAGE_TAG"
+    } > "$DIR/.env"
+    chmod 600 "$DIR/.env"
+}
+write_env
 dc() { docker compose -f "$DIR/compose.yaml" --env-file "$DIR/.env" "$@"; }
 
 AGENT_IMAGE=awg-agent:local
@@ -129,11 +134,14 @@ else
         --entrypoint python "$AGENT_IMAGE" -m awg_agent.enroll /pki) || die 'Invalid node key'
     unset SECRET
 fi
+[ -n "$MANAGEMENT_PORT" ] || MANAGEMENT_PORT=$(sed -n 's/^AWG_NODE_MANAGEMENT_PORT=//p' "$DIR/pki/node.env" | head -1)
+MANAGEMENT_PORT=${MANAGEMENT_PORT:-8443}
+write_env
 say "Starting the Agent (node $NODE_ID)"
 dc up -d --pull missing --force-recreate
 say 'Done'
 printf '\n  Node %s is running. Management API: TCP %s (mutual TLS), AmneziaWG: UDP %s.\n' "$NODE_ID" "$MANAGEMENT_PORT" "$UDP_PORTS"
 printf '  Docker-published ports bypass UFW. To allow management only from your panel server, e.g.:\n'
-printf '    iptables -I DOCKER-USER -p tcp --dport 8443 ! -s <PANEL_IP> -j DROP\n'
+printf '    iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport %s --ctdir ORIGINAL ! -s <PANEL_IP> -j DROP\n' "$MANAGEMENT_PORT"
 printf '  or pass --management-bind <private IP>. Then press "Нода установлена — подключить" in the TUI.\n'
 printf '  The TUI fills this UDP port into new profiles of this node; to open more ports re-run with --udp-ports.\n'

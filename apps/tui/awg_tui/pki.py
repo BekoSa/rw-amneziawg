@@ -19,7 +19,9 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 PREFIX = 'awgnode1:'
 
 
-def node_bundle(ca_dir: Path, controller_id: str, node_id: UUID, *, days: int = 825) -> str:
+def node_bundle(ca_dir: Path, controller_id: str, node_id: UUID, *, management_port: int = 8443, days: int = 825) -> str:
+    if not 1 <= int(management_port) <= 65535:
+        raise ValueError('invalid management port')
     ca_key = serialization.load_pem_private_key((ca_dir / 'ca.key').read_bytes(), None)
     ca_pem = (ca_dir / 'ca.crt').read_bytes()
     ca = x509.load_pem_x509_certificate(ca_pem)
@@ -32,7 +34,9 @@ def node_bundle(ca_dir: Path, controller_id: str, node_id: UUID, *, days: int = 
             .add_extension(x509.SubjectAlternativeName([x509.DNSName(f'{node_id}.agents.awg.internal')]), False)
             .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), False)
             .sign(ca_key, hashes.SHA256()))
-    payload = {'node_id': str(node_id), 'controller_id': str(UUID(controller_id)), 'ca': ca_pem.decode(),
+    # The management port travels with the key so the node installer publishes the port the Controller uses.
+    payload = {'node_id': str(node_id), 'controller_id': str(UUID(controller_id)), 'management_port': int(management_port),
+               'ca': ca_pem.decode(),
                'cert': cert.public_bytes(serialization.Encoding.PEM).decode(),
                'key': key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
                                         serialization.NoEncryption()).decode()}

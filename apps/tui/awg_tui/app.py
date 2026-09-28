@@ -283,7 +283,8 @@ class NodeKeyScreen(ModalScreen[None]):
         controller_id = os.environ.get('AWG_CONTROLLER_ID', '')
         try:
             self.node_id = uuid4()
-            bundle = node_bundle(ca_dir, controller_id, self.node_id)
+            bundle = node_bundle(ca_dir, controller_id, self.node_id,
+                                 management_port=int(self.query_one('#port', Input).value.strip() or 8443))
         except (OSError, ValueError) as error:
             self.status(f'[red]Нет доступа к CA расширения:[/] {type(error).__name__}')
             return

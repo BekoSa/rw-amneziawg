@@ -1,0 +1,32 @@
+# Dev-only entry point to the stock panel, published on host loopback only.
+# Mirrors the production layout: subscriptions go through the AWG Gateway, everything else to stock.
+{
+	skip_install_trust
+	admin off
+	# Browsers send no SNI for IP literals; serve the 127.0.0.1 certificate by default.
+	default_sni 127.0.0.1
+	auto_https disable_redirects
+}
+
+# Subscription domain: the stock subscription page needs its own origin (its /assets clash with the panel's).
+https://127.0.0.1:18444, https://localhost:18444 {
+	tls internal
+	reverse_proxy subscription-page:3010 {
+		header_up X-Forwarded-Proto https
+	}
+}
+
+https://127.0.0.1:18443, https://localhost:18443 {
+	tls internal
+	handle /api/sub/* {
+		reverse_proxy gateway:8081 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	handle {
+		# Stock requires TLS-terminating proxy headers; it is never exposed directly.
+		reverse_proxy remnawave:3000 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+}

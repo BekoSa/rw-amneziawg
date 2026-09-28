@@ -1,0 +1,323 @@
+{
+  "$defs": {
+    "AWGProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "api_version": {
+          "const": "awg.remnawave-extension.io/v1",
+          "default": "awg.remnawave-extension.io/v1",
+          "title": "Api Version",
+          "type": "string"
+        },
+        "profile_id": {
+          "format": "uuid",
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "endpoint": {
+          "$ref": "#/$defs/Endpoint"
+        },
+        "network": {
+          "$ref": "#/$defs/NetworkSpec"
+        },
+        "protocol": {
+          "$ref": "#/$defs/ProtocolSpec"
+        },
+        "dns_servers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dns Servers",
+          "type": "array"
+        },
+        "access": {
+          "$ref": "#/$defs/AccessSpec"
+        },
+        "node_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Node Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "profile_id",
+        "name",
+        "endpoint",
+        "network",
+        "protocol"
+      ],
+      "title": "AWGProfile",
+      "type": "object"
+    },
+    "AccessSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "squad_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Squad Ids",
+          "type": "array"
+        },
+        "user_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "User Ids",
+          "type": "array"
+        }
+      },
+      "title": "AccessSpec",
+      "type": "object"
+    },
+    "Endpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "maxLength": 253,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9.:_-]+$",
+          "title": "Host",
+          "type": "string"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "host",
+        "port"
+      ],
+      "title": "Endpoint",
+      "type": "object"
+    },
+    "NetworkSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "ipv4_pool": {
+          "title": "Ipv4 Pool",
+          "type": "string"
+        },
+        "ipv6_pool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ipv6 Pool"
+        },
+        "server_ipv4": {
+          "title": "Server Ipv4",
+          "type": "string"
+        },
+        "server_ipv6": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Server Ipv6"
+        },
+        "mtu": {
+          "default": 1420,
+          "maximum": 9000,
+          "minimum": 576,
+          "title": "Mtu",
+          "type": "integer"
+        },
+        "client_allowed_ips": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Client Allowed Ips",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ipv4_pool",
+        "server_ipv4"
+      ],
+      "title": "NetworkSpec",
+      "type": "object"
+    },
+    "PeerSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "peer_id": {
+          "format": "uuid",
+          "title": "Peer Id",
+          "type": "string"
+        },
+        "user_uuid": {
+          "format": "uuid",
+          "title": "User Uuid",
+          "type": "string"
+        },
+        "public_key": {
+          "title": "Public Key",
+          "type": "string"
+        },
+        "ipv4_address": {
+          "title": "Ipv4 Address",
+          "type": "string"
+        },
+        "ipv6_address": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ipv6 Address"
+        },
+        "key_generation": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Key Generation",
+          "type": "integer"
+        },
+        "persistent_keepalive": {
+          "default": 25,
+          "maximum": 65535,
+          "minimum": 0,
+          "title": "Persistent Keepalive",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "peer_id",
+        "user_uuid",
+        "public_key",
+        "ipv4_address"
+      ],
+      "title": "PeerSpec",
+      "type": "object"
+    },
+    "ProtocolSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "title": "Version",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "required_features": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Features",
+          "type": "array"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "version"
+      ],
+      "title": "ProtocolSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "deployment_id": {
+      "format": "uuid",
+      "title": "Deployment Id",
+      "type": "string"
+    },
+    "node_id": {
+      "format": "uuid",
+      "title": "Node Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "profile": {
+      "$ref": "#/$defs/AWGProfile"
+    },
+    "peers": {
+      "items": {
+        "$ref": "#/$defs/PeerSpec"
+      },
+      "title": "Peers",
+      "type": "array"
+    },
+    "revoked_public_keys": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Revoked Public Keys",
+      "type": "array"
+    }
+  },
+  "required": [
+    "deployment_id",
+    "node_id",
+    "revision",
+    "profile"
+  ],
+  "title": "DesiredDeployment",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

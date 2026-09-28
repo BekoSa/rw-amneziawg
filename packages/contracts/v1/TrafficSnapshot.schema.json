@@ -1,0 +1,113 @@
+{
+  "$defs": {
+    "PeerTraffic": {
+      "additionalProperties": false,
+      "properties": {
+        "peer_id": {
+          "format": "uuid",
+          "title": "Peer Id",
+          "type": "string"
+        },
+        "public_key": {
+          "title": "Public Key",
+          "type": "string"
+        },
+        "key_generation": {
+          "minimum": 1,
+          "title": "Key Generation",
+          "type": "integer"
+        },
+        "counter_epoch": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Counter Epoch"
+        },
+        "rx_bytes": {
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Rx Bytes",
+          "type": "string"
+        },
+        "tx_bytes": {
+          "pattern": "^(0|[1-9][0-9]*)$",
+          "title": "Tx Bytes",
+          "type": "string"
+        },
+        "latest_handshake": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest Handshake"
+        }
+      },
+      "required": [
+        "peer_id",
+        "public_key",
+        "key_generation",
+        "rx_bytes",
+        "tx_bytes"
+      ],
+      "title": "PeerTraffic",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "node_id": {
+      "format": "uuid",
+      "title": "Node Id",
+      "type": "string"
+    },
+    "deployment_id": {
+      "format": "uuid",
+      "title": "Deployment Id",
+      "type": "string"
+    },
+    "runtime_epoch": {
+      "format": "uuid",
+      "title": "Runtime Epoch",
+      "type": "string"
+    },
+    "sequence": {
+      "minimum": 0,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "peers": {
+      "items": {
+        "$ref": "#/$defs/PeerTraffic"
+      },
+      "title": "Peers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "node_id",
+    "deployment_id",
+    "runtime_epoch",
+    "sequence",
+    "peers"
+  ],
+  "title": "TrafficSnapshot",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

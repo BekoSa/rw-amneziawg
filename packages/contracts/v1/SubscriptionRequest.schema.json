@@ -1,0 +1,19 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "subscription_token": {
+      "format": "password",
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Subscription Token",
+      "type": "string",
+      "writeOnly": true
+    }
+  },
+  "required": [
+    "subscription_token"
+  ],
+  "title": "SubscriptionRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -1,0 +1,63 @@
+# Weekly (and on demand): look for new amneziawg-go / amneziawg-tools releases. If there are any, pin
+# them, run the full verification (unit tests + real tunnel E2E) and open a pull request with the
+# report of UAPI/config keys that changed upstream. Nothing is merged automatically.
+name: AmneziaWG core update
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check upstream releases
+        id: check
+        run: |
+          set +e
+          scripts/update-amnezia.sh --check
+          rc=$?
+          set -e
+          [ "$rc" = 0 ] || [ "$rc" = 10 ] || exit "$rc"
+          echo "update=$([ "$rc" = 10 ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+      - name: Pin new releases and report changed keys
+        if: steps.check.outputs.update == 'yes'
+        run: |
+          mkdir -p artifacts
+          scripts/update-amnezia.sh | tee artifacts/amnezia-update.txt
+      - name: Verify (build, tests, real AmneziaWG tunnel E2E)
+        if: steps.check.outputs.update == 'yes'
+        run: |
+          scripts/lab.sh build
+          scripts/lab.sh test
+          scripts/lab.sh e2e
+      - name: Pull request body
+        if: steps.check.outputs.update == 'yes'
+        run: |
+          {
+            echo 'New AmneziaWG core releases were pinned and verified in CI (unit tests + real tunnel E2E).'
+            echo
+            echo 'Upstream key changes — review whether packages/awg-config and the subscription renderers need updates:'
+            echo
+            echo '```'
+            cat artifacts/amnezia-update.txt
+            echo '```'
+          } > artifacts/pr-body.md
+      - name: Open pull request
+        if: steps.check.outputs.update == 'yes'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: amnezia/core-update
+          commit-message: 'Update pinned AmneziaWG core'
+          title: 'Update pinned AmneziaWG core (amneziawg-go / amneziawg-tools)'
+          body-path: artifacts/pr-body.md
+          add-paths: |
+            apps/node-agent/Dockerfile
+            docs/agent.md

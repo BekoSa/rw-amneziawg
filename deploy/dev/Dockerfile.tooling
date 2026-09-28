@@ -1,0 +1,6 @@
+FROM python:3.12-slim
+WORKDIR /workspace
+COPY requirements.txt requirements-dev.txt requirements.lock /tmp/
+RUN pip install --no-cache-dir -c /tmp/requirements.lock -r /tmp/requirements-dev.txt
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+CMD ["pytest", "-p", "no:cacheprovider", "tests"]

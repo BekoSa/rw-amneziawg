@@ -1,0 +1,12 @@
+.git
+.codex
+.superpowers
+**/__pycache__
+.pytest_cache
+.env
+**/.env
+**/*.key
+**/*.pem
+**/secrets
+artifacts
+

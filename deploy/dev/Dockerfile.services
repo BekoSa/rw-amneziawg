@@ -1,0 +1,5 @@
+FROM awg-dev-tooling:local
+COPY packages /workspace/packages
+COPY apps /workspace/apps
+COPY scripts /opt/lab
+ENV PYTHONPATH=/workspace:/workspace/packages/contracts:/workspace/packages/remnawave-client:/workspace/packages/awg-config:/workspace/packages/subscription-renderers:/workspace/packages/capabilities:/workspace/apps/controller:/workspace/apps/node-agent:/workspace/apps/subscription-gateway:/workspace/apps/tui

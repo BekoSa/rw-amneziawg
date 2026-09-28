@@ -1,0 +1,137 @@
+# AWG extension next to an existing stock Remnawave panel. Created/used by ./install.sh — not for the dev host.
+# Joins the panel's Docker network (external) only to call the documented API and to sit in front of the
+# stock subscription page. Stock containers, images and database are never modified.
+name: awg-extension
+x-image: &image
+  # Local build by default; install.sh --image-registry uses the images published by CI instead.
+  image: ${AWG_EXTENSION_IMAGE:-awg-extension:local}
+services:
+  awg-db:
+    image: postgres:18.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: awg
+      POSTGRES_DB: awg
+      POSTGRES_PASSWORD: ${AWG_DATABASE_PASSWORD:?run install.sh}
+    volumes: [awg-db:/var/lib/postgresql]
+    networks: [awg]
+    healthcheck:
+      test: [CMD, pg_isready, -U, awg, -d, awg]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  controller:
+    <<: *image
+    build: {context: '${AWG_SOURCE_DIR:?run install.sh}', dockerfile: Dockerfile}
+    command: [python, -m, awg_controller]
+    restart: unless-stopped
+    environment:
+      AWG_ENVIRONMENT: production
+      AWG_DATABASE_URL: postgresql://awg:${AWG_DATABASE_PASSWORD}@awg-db:5432/awg
+      REMNAWAVE_API_URL: ${REMNAWAVE_API_URL:?run install.sh}
+      REMNAWAVE_API_TOKEN: ${REMNAWAVE_API_TOKEN:?run install.sh}
+      AWG_ADMIN_TOKEN: ${AWG_ADMIN_TOKEN:?run install.sh}
+      AWG_GATEWAY_TOKEN: ${AWG_GATEWAY_TOKEN:?run install.sh}
+      AWG_WEBHOOK_SECRET: ${AWG_WEBHOOK_SECRET:?run install.sh}
+      AWG_KEY_ENCRYPTION_KEY: ${AWG_KEY_ENCRYPTION_KEY:?run install.sh}
+      AWG_AGENT_CA: /pki/ca.crt
+      AWG_CONTROLLER_CERT: /pki/controller.crt
+      AWG_CONTROLLER_KEY: /pki/controller.key
+      AWG_RECONCILE_SECONDS: ${AWG_RECONCILE_SECONDS:-15}
+      AWG_QUOTA_POLICY: ${AWG_QUOTA_POLICY:-combined}
+      AWG_ADMIN_ALLOWED_CIDRS: ${AWG_ADMIN_ALLOWED_CIDRS:-}
+    volumes: [pki-controller:/pki:ro]
+    networks:
+      # `controller-internal` exists only on the internal network: the Gateway and TUI must reach the
+      # Controller from there, because admin/internal routes reject peers on the panel network.
+      awg: {aliases: [controller-internal]}
+      remnawave: {aliases: [awg-controller]}
+    user: '10001:10001'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      awg-db: {condition: service_healthy}
+  gateway:
+    <<: *image
+    command: [uvicorn, awg_gateway.main:app, --host, 0.0.0.0, --port, '8081', --no-access-log]
+    restart: unless-stopped
+    environment:
+      AWG_GATEWAY_STOCK_URL: ${AWG_GATEWAY_STOCK_URL:?run install.sh}
+      AWG_GATEWAY_CONTROLLER_URL: http://controller-internal:8080
+      AWG_GATEWAY_TOKEN: ${AWG_GATEWAY_TOKEN}
+      # Reachable only from the reverse proxy / stock subscription page on the panel network.
+      AWG_GATEWAY_TRUST_FORWARDED: '1'
+      AWG_GATEWAY_SUBPAGE_PASSTHROUGH: ${AWG_GATEWAY_SUBPAGE_PASSTHROUGH:-0}
+    networks:
+      awg:
+      remnawave: {aliases: [awg-gateway]}
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health/live', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  tui:
+    # ./awg — terminal administration; no ports are published anywhere.
+    <<: *image
+    profiles: [tools]
+    command: [python, -m, awg_tui]
+    stdin_open: true
+    tty: true
+    user: '0:0'
+    environment:
+      AWG_CONTROLLER_URL: http://controller-internal:8080
+      AWG_ADMIN_TOKEN: ${AWG_ADMIN_TOKEN}
+      AWG_PKI_CA_DIR: /pki-ca
+      AWG_CONTROLLER_ID: ${AWG_CONTROLLER_ID:?run install.sh}
+    volumes: [pki-ca:/pki-ca:ro]
+    networks: [awg]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+  pki-init:
+    <<: *image
+    profiles: [tools]
+    command: [python, -m, awg_tui.setup, init-pki]
+    user: '0:0'
+    environment:
+      AWG_CONTROLLER_ID: ${AWG_CONTROLLER_ID}
+    volumes: [pki-ca:/pki-ca, pki-controller:/pki-controller]
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+  check-remnawave:
+    <<: *image
+    profiles: [tools]
+    command: [python, -m, awg_tui.setup, check-remnawave]
+    environment:
+      REMNAWAVE_API_URL: ${REMNAWAVE_API_URL}
+      REMNAWAVE_API_TOKEN: ${REMNAWAVE_API_TOKEN}
+    networks: [remnawave]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+networks:
+  awg: {driver: bridge, internal: true}
+  remnawave:
+    external: true
+    name: ${REMNAWAVE_NETWORK:?run install.sh}
+volumes:
+  awg-db:
+  pki-ca:
+  pki-controller:

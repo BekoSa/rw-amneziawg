@@ -1,0 +1,1456 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Remnawave AWG internal contracts",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/capabilities": {
+      "get": {
+        "operationId": "get_AgentCapabilities",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCapabilities"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/deployments/{deployment_id}/validate": {
+      "post": {
+        "operationId": "post_ValidationResult",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesiredDeployment"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/deployments/{deployment_id}/apply": {
+      "put": {
+        "operationId": "put_ActualDeployment",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActualDeployment"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/deployments/{deployment_id}/state": {
+      "get": {
+        "operationId": "get_ActualDeployment",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActualDeployment"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/deployments/{deployment_id}/traffic": {
+      "get": {
+        "operationId": "get_TrafficSnapshot",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrafficSnapshot"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/internal/subscriptions/material": {
+      "post": {
+        "operationId": "post_SubscriptionMaterial",
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionMaterial"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionRequest"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccessSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "squad_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Squad Ids",
+            "type": "array"
+          },
+          "user_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "User Ids",
+            "type": "array"
+          }
+        },
+        "title": "AccessSpec",
+        "type": "object"
+      },
+      "Endpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "host": {
+            "maxLength": 253,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9.:_-]+$",
+            "title": "Host",
+            "type": "string"
+          },
+          "port": {
+            "maximum": 65535,
+            "minimum": 1,
+            "title": "Port",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "host",
+          "port"
+        ],
+        "title": "Endpoint",
+        "type": "object"
+      },
+      "NetworkSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "ipv4_pool": {
+            "title": "Ipv4 Pool",
+            "type": "string"
+          },
+          "ipv6_pool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ipv6 Pool"
+          },
+          "server_ipv4": {
+            "title": "Server Ipv4",
+            "type": "string"
+          },
+          "server_ipv6": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Server Ipv6"
+          },
+          "mtu": {
+            "default": 1420,
+            "maximum": 9000,
+            "minimum": 576,
+            "title": "Mtu",
+            "type": "integer"
+          },
+          "client_allowed_ips": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Client Allowed Ips",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ipv4_pool",
+          "server_ipv4"
+        ],
+        "title": "NetworkSpec",
+        "type": "object"
+      },
+      "ProtocolSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9._-]*$",
+            "title": "Adapter Id",
+            "type": "string"
+          },
+          "version": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Version",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Parameters",
+            "type": "object"
+          },
+          "required_features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Features",
+            "type": "array"
+          }
+        },
+        "required": [
+          "adapter_id",
+          "version"
+        ],
+        "title": "ProtocolSpec",
+        "type": "object"
+      },
+      "AWGProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "awg.remnawave-extension.io/v1",
+            "default": "awg.remnawave-extension.io/v1",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "profile_id": {
+            "format": "uuid",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "endpoint": {
+            "$ref": "#/components/schemas/Endpoint"
+          },
+          "network": {
+            "$ref": "#/components/schemas/NetworkSpec"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ProtocolSpec"
+          },
+          "dns_servers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dns Servers",
+            "type": "array"
+          },
+          "access": {
+            "$ref": "#/components/schemas/AccessSpec"
+          },
+          "node_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Node Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "profile_id",
+          "name",
+          "endpoint",
+          "network",
+          "protocol"
+        ],
+        "title": "AWGProfile",
+        "type": "object"
+      },
+      "ProtocolCapability": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_id": {
+            "title": "Adapter Id",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Versions",
+            "type": "array"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          }
+        },
+        "required": [
+          "adapter_id",
+          "versions"
+        ],
+        "title": "ProtocolCapability",
+        "type": "object"
+      },
+      "AgentCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "protocol_version": {
+            "const": "1.0",
+            "default": "1.0",
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "runtime": {
+            "enum": [
+              "userspace",
+              "kernel",
+              "mock"
+            ],
+            "title": "Runtime",
+            "type": "string"
+          },
+          "protocols": {
+            "items": {
+              "$ref": "#/components/schemas/ProtocolCapability"
+            },
+            "title": "Protocols",
+            "type": "array"
+          },
+          "max_peers": {
+            "default": 10000,
+            "minimum": 1,
+            "title": "Max Peers",
+            "type": "integer"
+          },
+          "supports_ipv6": {
+            "default": false,
+            "title": "Supports Ipv6",
+            "type": "boolean"
+          },
+          "supports_atomic_apply": {
+            "default": true,
+            "title": "Supports Atomic Apply",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "node_id",
+          "agent_version",
+          "runtime",
+          "protocols"
+        ],
+        "title": "AgentCapabilities",
+        "type": "object"
+      },
+      "PeerSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "peer_id": {
+            "format": "uuid",
+            "title": "Peer Id",
+            "type": "string"
+          },
+          "user_uuid": {
+            "format": "uuid",
+            "title": "User Uuid",
+            "type": "string"
+          },
+          "public_key": {
+            "title": "Public Key",
+            "type": "string"
+          },
+          "ipv4_address": {
+            "title": "Ipv4 Address",
+            "type": "string"
+          },
+          "ipv6_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ipv6 Address"
+          },
+          "key_generation": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Key Generation",
+            "type": "integer"
+          },
+          "persistent_keepalive": {
+            "default": 25,
+            "maximum": 65535,
+            "minimum": 0,
+            "title": "Persistent Keepalive",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "peer_id",
+          "user_uuid",
+          "public_key",
+          "ipv4_address"
+        ],
+        "title": "PeerSpec",
+        "type": "object"
+      },
+      "DesiredDeployment": {
+        "additionalProperties": false,
+        "properties": {
+          "protocol_version": {
+            "const": "1.0",
+            "default": "1.0",
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "deployment_id": {
+            "format": "uuid",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/AWGProfile"
+          },
+          "peers": {
+            "items": {
+              "$ref": "#/components/schemas/PeerSpec"
+            },
+            "title": "Peers",
+            "type": "array"
+          },
+          "revoked_public_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Revoked Public Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "node_id",
+          "revision",
+          "profile"
+        ],
+        "title": "DesiredDeployment",
+        "type": "object"
+      },
+      "ApplyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "desired": {
+            "$ref": "#/components/schemas/DesiredDeployment"
+          },
+          "expected_applied_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expected Applied Revision"
+          }
+        },
+        "required": [
+          "desired"
+        ],
+        "title": "ApplyRequest",
+        "type": "object"
+      },
+      "ValidationIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Field"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ValidationIssue",
+        "type": "object"
+      },
+      "ValidationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "revision": {
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Digest",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "valid",
+          "revision",
+          "digest"
+        ],
+        "title": "ValidationResult",
+        "type": "object"
+      },
+      "DeploymentState": {
+        "enum": [
+          "DRAFT",
+          "VALIDATED",
+          "APPLYING",
+          "READY",
+          "ROLLING_BACK",
+          "DEGRADED",
+          "ERROR"
+        ],
+        "title": "DeploymentState",
+        "type": "string"
+      },
+      "ActualDeployment": {
+        "additionalProperties": false,
+        "properties": {
+          "protocol_version": {
+            "const": "1.0",
+            "default": "1.0",
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "deployment_id": {
+            "format": "uuid",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "desired_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Desired Revision"
+          },
+          "validated_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Validated Revision"
+          },
+          "applied_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Applied Revision"
+          },
+          "last_known_good_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Known Good Revision"
+          },
+          "applied_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Applied Digest"
+          },
+          "state": {
+            "$ref": "#/components/schemas/DeploymentState",
+            "default": "DRAFT"
+          },
+          "healthy": {
+            "default": false,
+            "title": "Healthy",
+            "type": "boolean"
+          },
+          "interface_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Interface Name"
+          },
+          "server_public_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Server Public Key"
+          },
+          "listen_port": {
+            "anyOf": [
+              {
+                "maximum": 65535,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Listen Port"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationIssue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "deployment_id"
+        ],
+        "title": "ActualDeployment",
+        "type": "object"
+      },
+      "PeerTraffic": {
+        "additionalProperties": false,
+        "properties": {
+          "peer_id": {
+            "format": "uuid",
+            "title": "Peer Id",
+            "type": "string"
+          },
+          "public_key": {
+            "title": "Public Key",
+            "type": "string"
+          },
+          "key_generation": {
+            "minimum": 1,
+            "title": "Key Generation",
+            "type": "integer"
+          },
+          "counter_epoch": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Counter Epoch"
+          },
+          "rx_bytes": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "title": "Rx Bytes",
+            "type": "string"
+          },
+          "tx_bytes": {
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "title": "Tx Bytes",
+            "type": "string"
+          },
+          "latest_handshake": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Latest Handshake"
+          }
+        },
+        "required": [
+          "peer_id",
+          "public_key",
+          "key_generation",
+          "rx_bytes",
+          "tx_bytes"
+        ],
+        "title": "PeerTraffic",
+        "type": "object"
+      },
+      "TrafficSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "deployment_id": {
+            "format": "uuid",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "runtime_epoch": {
+            "format": "uuid",
+            "title": "Runtime Epoch",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "peers": {
+            "items": {
+              "$ref": "#/components/schemas/PeerTraffic"
+            },
+            "title": "Peers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "node_id",
+          "deployment_id",
+          "runtime_epoch",
+          "sequence",
+          "peers"
+        ],
+        "title": "TrafficSnapshot",
+        "type": "object"
+      },
+      "UserState": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED",
+          "LIMITED",
+          "EXPIRED",
+          "DELETED"
+        ],
+        "title": "UserState",
+        "type": "string"
+      },
+      "RemnawaveUser": {
+        "additionalProperties": false,
+        "properties": {
+          "user_uuid": {
+            "format": "uuid",
+            "title": "User Uuid",
+            "type": "string"
+          },
+          "upstream_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Upstream Id"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/UserState"
+          },
+          "expire_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expire At"
+          },
+          "last_traffic_reset_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Traffic Reset At"
+          },
+          "squad_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Squad Ids",
+            "type": "array"
+          },
+          "traffic_used_bytes": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Traffic Used Bytes",
+            "type": "integer"
+          },
+          "traffic_limit_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Traffic Limit Bytes"
+          },
+          "subscription_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subscription Id"
+          }
+        },
+        "required": [
+          "user_uuid",
+          "username",
+          "status"
+        ],
+        "title": "RemnawaveUser",
+        "type": "object"
+      },
+      "UserSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/RemnawaveUser"
+            },
+            "title": "Users",
+            "type": "array"
+          },
+          "authoritative": {
+            "title": "Authoritative",
+            "type": "boolean"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "users",
+          "authoritative",
+          "snapshot_id"
+        ],
+        "title": "UserSnapshot",
+        "type": "object"
+      },
+      "NodeRegistration": {
+        "additionalProperties": false,
+        "properties": {
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "management_url": {
+            "pattern": "^https://[^\\s]+$",
+            "title": "Management Url",
+            "type": "string"
+          },
+          "remnawave_node_uuid": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Remnawave Node Uuid"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "node_id",
+          "name",
+          "management_url"
+        ],
+        "title": "NodeRegistration",
+        "type": "object"
+      },
+      "NodeView": {
+        "additionalProperties": false,
+        "properties": {
+          "registration": {
+            "$ref": "#/components/schemas/NodeRegistration"
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentCapabilities"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "online": {
+            "default": false,
+            "title": "Online",
+            "type": "boolean"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Seen At"
+          },
+          "deployments": {
+            "items": {
+              "$ref": "#/components/schemas/ActualDeployment"
+            },
+            "title": "Deployments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "registration"
+        ],
+        "title": "NodeView",
+        "type": "object"
+      },
+      "SubscriptionPeer": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": {
+            "format": "uuid",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "endpoint": {
+            "$ref": "#/components/schemas/Endpoint"
+          },
+          "server_public_key": {
+            "title": "Server Public Key",
+            "type": "string"
+          },
+          "client_private_key": {
+            "format": "password",
+            "title": "Client Private Key",
+            "type": "string",
+            "writeOnly": true
+          },
+          "ipv4_address": {
+            "title": "Ipv4 Address",
+            "type": "string"
+          },
+          "ipv6_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ipv6 Address"
+          },
+          "dns_servers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dns Servers",
+            "type": "array"
+          },
+          "allowed_ips": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Ips",
+            "type": "array"
+          },
+          "mtu": {
+            "default": 1420,
+            "title": "Mtu",
+            "type": "integer"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ProtocolSpec"
+          }
+        },
+        "required": [
+          "profile_id",
+          "node_id",
+          "name",
+          "endpoint",
+          "server_public_key",
+          "client_private_key",
+          "ipv4_address",
+          "protocol"
+        ],
+        "title": "SubscriptionPeer",
+        "type": "object"
+      },
+      "SubscriptionMaterial": {
+        "additionalProperties": false,
+        "properties": {
+          "user_uuid": {
+            "format": "uuid",
+            "title": "User Uuid",
+            "type": "string"
+          },
+          "peers": {
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionPeer"
+            },
+            "title": "Peers",
+            "type": "array"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_uuid",
+          "peers"
+        ],
+        "title": "SubscriptionMaterial",
+        "type": "object"
+      },
+      "SubscriptionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "subscription_token": {
+            "format": "password",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Subscription Token",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "subscription_token"
+        ],
+        "title": "SubscriptionRequest",
+        "type": "object"
+      },
+      "APIError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "correlation_id": {
+            "title": "Correlation Id",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "correlation_id"
+        ],
+        "title": "APIError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "mutualTLS": {
+        "type": "mutualTLS"
+      },
+      "serviceToken": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

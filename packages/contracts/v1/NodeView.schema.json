@@ -1,0 +1,379 @@
+{
+  "$defs": {
+    "ActualDeployment": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "deployment_id": {
+          "format": "uuid",
+          "title": "Deployment Id",
+          "type": "string"
+        },
+        "desired_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Desired Revision"
+        },
+        "validated_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validated Revision"
+        },
+        "applied_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Applied Revision"
+        },
+        "last_known_good_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Known Good Revision"
+        },
+        "applied_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Applied Digest"
+        },
+        "state": {
+          "$ref": "#/$defs/DeploymentState",
+          "default": "DRAFT"
+        },
+        "healthy": {
+          "default": false,
+          "title": "Healthy",
+          "type": "boolean"
+        },
+        "interface_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interface Name"
+        },
+        "server_public_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Server Public Key"
+        },
+        "listen_port": {
+          "anyOf": [
+            {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listen Port"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValidationIssue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "deployment_id"
+      ],
+      "title": "ActualDeployment",
+      "type": "object"
+    },
+    "AgentCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "node_id": {
+          "format": "uuid",
+          "title": "Node Id",
+          "type": "string"
+        },
+        "agent_version": {
+          "title": "Agent Version",
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [
+            "userspace",
+            "kernel",
+            "mock"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        },
+        "protocols": {
+          "items": {
+            "$ref": "#/$defs/ProtocolCapability"
+          },
+          "title": "Protocols",
+          "type": "array"
+        },
+        "max_peers": {
+          "default": 10000,
+          "minimum": 1,
+          "title": "Max Peers",
+          "type": "integer"
+        },
+        "supports_ipv6": {
+          "default": false,
+          "title": "Supports Ipv6",
+          "type": "boolean"
+        },
+        "supports_atomic_apply": {
+          "default": true,
+          "title": "Supports Atomic Apply",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "node_id",
+        "agent_version",
+        "runtime",
+        "protocols"
+      ],
+      "title": "AgentCapabilities",
+      "type": "object"
+    },
+    "DeploymentState": {
+      "enum": [
+        "DRAFT",
+        "VALIDATED",
+        "APPLYING",
+        "READY",
+        "ROLLING_BACK",
+        "DEGRADED",
+        "ERROR"
+      ],
+      "title": "DeploymentState",
+      "type": "string"
+    },
+    "NodeRegistration": {
+      "additionalProperties": false,
+      "properties": {
+        "node_id": {
+          "format": "uuid",
+          "title": "Node Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "management_url": {
+          "pattern": "^https://[^\\s]+$",
+          "title": "Management Url",
+          "type": "string"
+        },
+        "remnawave_node_uuid": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remnawave Node Uuid"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "node_id",
+        "name",
+        "management_url"
+      ],
+      "title": "NodeRegistration",
+      "type": "object"
+    },
+    "ProtocolCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "versions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Versions",
+          "type": "array"
+        },
+        "features": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Features",
+          "type": "array"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "versions"
+      ],
+      "title": "ProtocolCapability",
+      "type": "object"
+    },
+    "ValidationIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ValidationIssue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "registration": {
+      "$ref": "#/$defs/NodeRegistration"
+    },
+    "capabilities": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AgentCapabilities"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "online": {
+      "default": false,
+      "title": "Online",
+      "type": "boolean"
+    },
+    "last_seen_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Seen At"
+    },
+    "deployments": {
+      "items": {
+        "$ref": "#/$defs/ActualDeployment"
+      },
+      "title": "Deployments",
+      "type": "array"
+    }
+  },
+  "required": [
+    "registration"
+  ],
+  "title": "NodeView",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

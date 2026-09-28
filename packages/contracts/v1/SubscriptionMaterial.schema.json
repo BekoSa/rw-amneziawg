@@ -1,0 +1,183 @@
+{
+  "$defs": {
+    "Endpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "maxLength": 253,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9.:_-]+$",
+          "title": "Host",
+          "type": "string"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "host",
+        "port"
+      ],
+      "title": "Endpoint",
+      "type": "object"
+    },
+    "ProtocolSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "title": "Version",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "required_features": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Features",
+          "type": "array"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "version"
+      ],
+      "title": "ProtocolSpec",
+      "type": "object"
+    },
+    "SubscriptionPeer": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_id": {
+          "format": "uuid",
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "node_id": {
+          "format": "uuid",
+          "title": "Node Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "endpoint": {
+          "$ref": "#/$defs/Endpoint"
+        },
+        "server_public_key": {
+          "title": "Server Public Key",
+          "type": "string"
+        },
+        "client_private_key": {
+          "format": "password",
+          "title": "Client Private Key",
+          "type": "string",
+          "writeOnly": true
+        },
+        "ipv4_address": {
+          "title": "Ipv4 Address",
+          "type": "string"
+        },
+        "ipv6_address": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ipv6 Address"
+        },
+        "dns_servers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dns Servers",
+          "type": "array"
+        },
+        "allowed_ips": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Ips",
+          "type": "array"
+        },
+        "mtu": {
+          "default": 1420,
+          "title": "Mtu",
+          "type": "integer"
+        },
+        "protocol": {
+          "$ref": "#/$defs/ProtocolSpec"
+        }
+      },
+      "required": [
+        "profile_id",
+        "node_id",
+        "name",
+        "endpoint",
+        "server_public_key",
+        "client_private_key",
+        "ipv4_address",
+        "protocol"
+      ],
+      "title": "SubscriptionPeer",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "user_uuid": {
+      "format": "uuid",
+      "title": "User Uuid",
+      "type": "string"
+    },
+    "peers": {
+      "items": {
+        "$ref": "#/$defs/SubscriptionPeer"
+      },
+      "title": "Peers",
+      "type": "array"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_uuid",
+    "peers"
+  ],
+  "title": "SubscriptionMaterial",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

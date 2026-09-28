@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "node_id": {
+      "format": "uuid",
+      "title": "Node Id",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "management_url": {
+      "pattern": "^https://[^\\s]+$",
+      "title": "Management Url",
+      "type": "string"
+    },
+    "remnawave_node_uuid": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Remnawave Node Uuid"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "node_id",
+    "name",
+    "management_url"
+  ],
+  "title": "NodeRegistration",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

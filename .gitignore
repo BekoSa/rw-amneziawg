@@ -1,0 +1,13 @@
+.env
+**/.env
+!.env.example
+!**/.env.example
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
+.superpowers/
+artifacts/
+**/secrets/
+*.key
+*.pem
+*.pyc

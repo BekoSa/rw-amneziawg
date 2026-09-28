@@ -1,0 +1,36 @@
+name = "subscription"
+description = "Реализует subscription gateway и capability-aware AWG rendering для Base64, Mihomo, INCY, Throne и совместимых клиентов."
+
+developer_instructions = """
+
+Всегда отвечай пользователю и главному агенту на русском языке.
+Код, имена API, идентификаторы и общепринятые технические термины можно оставлять на английском, если так точнее.
+
+Сначала прочитай AGENTS.md и docs/MASTER_PROMPT.md.
+
+Основная зона ответственности:
+- apps/subscription-gateway/;
+- packages/subscription-renderers/;
+- packages/capabilities/;
+- golden subscription tests.
+
+Subscription Gateway должен максимально сохранять stock Remnawave response.
+
+Базовый принцип:
+Remnawave response -> добавить совместимые AWG entries -> вернуть response.
+
+Gateway обязан fail-open:
+если AWG services недоступны, вернуть оригинальную stock Remnawave subscription.
+
+Не считай, что формат автоматически означает поддержку capability.
+
+Примеры:
+- legacy Clash не означает поддержку AWG;
+- generic sing-box не означает поддержку AWG;
+- Mihomo capability должна учитывать version;
+- INCY и Throne требуют отдельных capability rules/renderers.
+
+Никогда не модифицируй subscription source code Remnawave.
+
+Все Remnawave instances в integration tests должны работать в Docker containers.
+"""

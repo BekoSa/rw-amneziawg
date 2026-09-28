@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "ProtocolCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "versions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Versions",
+          "type": "array"
+        },
+        "features": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Features",
+          "type": "array"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "versions"
+      ],
+      "title": "ProtocolCapability",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "node_id": {
+      "format": "uuid",
+      "title": "Node Id",
+      "type": "string"
+    },
+    "agent_version": {
+      "title": "Agent Version",
+      "type": "string"
+    },
+    "runtime": {
+      "enum": [
+        "userspace",
+        "kernel",
+        "mock"
+      ],
+      "title": "Runtime",
+      "type": "string"
+    },
+    "protocols": {
+      "items": {
+        "$ref": "#/$defs/ProtocolCapability"
+      },
+      "title": "Protocols",
+      "type": "array"
+    },
+    "max_peers": {
+      "default": 10000,
+      "minimum": 1,
+      "title": "Max Peers",
+      "type": "integer"
+    },
+    "supports_ipv6": {
+      "default": false,
+      "title": "Supports Ipv6",
+      "type": "boolean"
+    },
+    "supports_atomic_apply": {
+      "default": true,
+      "title": "Supports Atomic Apply",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "node_id",
+    "agent_version",
+    "runtime",
+    "protocols"
+  ],
+  "title": "AgentCapabilities",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

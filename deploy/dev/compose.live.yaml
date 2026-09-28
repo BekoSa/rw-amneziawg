@@ -1,0 +1,77 @@
+# Real userspace AWG lab. Merge with compose.yaml; started only through `scripts/lab.sh e2e`.
+# Requires an already present /dev/net/tun (never created by the project). Nothing here grants
+# access to host namespaces: bridge networks only, NET_ADMIN only, no privileged, no host mounts.
+services:
+  awg-agent:
+    image: awg-dev-agent:local
+    profiles: [live]
+    environment:
+      AWG_NODE_ID: 00000000-0000-4000-8000-000000000001
+      AWG_CONTROLLER_ID: 00000000-0000-4000-8000-000000000002
+      AWG_ISOLATED_RUNTIME: '1'
+      AWG_STATE_DIR: /var/lib/awg-agent
+      AWG_TLS_CERT: /pki/agent.crt
+      AWG_TLS_KEY: /pki/agent.key
+      AWG_TLS_CA: /pki/ca.crt
+      # Tunnel clients must not reach lab service networks (controller, stock, control plane).
+      # 10.240.5.1 is the host-side bridge address of `target`: clients must not reach the host.
+      AWG_EGRESS_DENY: 10.240.3.0/24,10.240.4.0/24,10.240.6.0/24,10.240.5.1/32,172.16.0.0/12,192.168.0.0/16
+    volumes: [agent-state:/var/lib/awg-agent, pki-agent:/pki:ro]
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun:/dev/net/tun]
+    sysctls: {net.ipv4.ip_forward: '1'}
+    security_opt: [no-new-privileges:true]
+    networks:
+      extension:
+      underlay: {ipv4_address: 10.240.4.2}
+      target: {ipv4_address: 10.240.5.2}
+  awg-client:
+    image: awg-dev-live:local
+    profiles: [live]
+    entrypoint: [python, /opt/lab/live_client.py]
+    environment:
+      AWG_ISOLATED_RUNTIME: '1'
+      AWG_LAB_CONTROL_ADDRESS: 10.240.6.3
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun:/dev/net/tun]
+    security_opt: [no-new-privileges:true]
+    # Deliberately NOT attached to `target`: payload can only arrive through the tunnel.
+    networks:
+      underlay: {ipv4_address: 10.240.4.3}
+      lab-control: {ipv4_address: 10.240.6.3}
+  target:
+    image: awg-dev-services:local
+    profiles: [live]
+    command: [python, /opt/lab/live_target.py]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    networks:
+      target: {ipv4_address: 10.240.5.3}
+  tooling:
+    volumes: [lab-credentials:/lab-credentials:ro]
+    environment:
+      AWG_E2E_CONTROLLER_URL: http://controller:8080
+      AWG_E2E_GATEWAY_URL: http://gateway:8081
+      AWG_E2E_STOCK_URL: http://stock-proxy:8080
+      AWG_E2E_CLIENT_URL: http://10.240.6.3:9000
+      AWG_E2E_ADMIN_TOKEN: lab-admin-token
+    networks: [extension, stock-api, lab-control]
+networks:
+  underlay:
+    driver: bridge
+    internal: true
+    ipam: {config: [{subnet: 10.240.4.0/24}]}
+  target:
+    driver: bridge
+    internal: true
+    ipam: {config: [{subnet: 10.240.5.0/24}]}
+  lab-control:
+    driver: bridge
+    internal: true
+    ipam: {config: [{subnet: 10.240.6.0/24}]}
+volumes:
+  agent-state:

@@ -1,0 +1,149 @@
+{
+  "$defs": {
+    "RemnawaveUser": {
+      "additionalProperties": false,
+      "properties": {
+        "user_uuid": {
+          "format": "uuid",
+          "title": "User Uuid",
+          "type": "string"
+        },
+        "upstream_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9-]{1,64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upstream Id"
+        },
+        "username": {
+          "title": "Username",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/UserState"
+        },
+        "expire_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expire At"
+        },
+        "last_traffic_reset_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Traffic Reset At"
+        },
+        "squad_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Squad Ids",
+          "type": "array"
+        },
+        "traffic_used_bytes": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Traffic Used Bytes",
+          "type": "integer"
+        },
+        "traffic_limit_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Traffic Limit Bytes"
+        },
+        "subscription_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subscription Id"
+        }
+      },
+      "required": [
+        "user_uuid",
+        "username",
+        "status"
+      ],
+      "title": "RemnawaveUser",
+      "type": "object"
+    },
+    "UserState": {
+      "enum": [
+        "ACTIVE",
+        "DISABLED",
+        "LIMITED",
+        "EXPIRED",
+        "DELETED"
+      ],
+      "title": "UserState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "users": {
+      "items": {
+        "$ref": "#/$defs/RemnawaveUser"
+      },
+      "title": "Users",
+      "type": "array"
+    },
+    "authoritative": {
+      "title": "Authoritative",
+      "type": "boolean"
+    },
+    "fetched_at": {
+      "format": "date-time",
+      "title": "Fetched At",
+      "type": "string"
+    },
+    "snapshot_id": {
+      "format": "uuid",
+      "title": "Snapshot Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "users",
+    "authoritative",
+    "snapshot_id"
+  ],
+  "title": "UserSnapshot",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

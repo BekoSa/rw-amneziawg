@@ -1,0 +1,243 @@
+name: awg-dev
+services:
+  tooling:
+    image: awg-dev-tooling:local
+    build:
+      context: ../..
+      dockerfile: deploy/dev/Dockerfile.tooling
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace:ro
+    environment:
+      PYTHONPATH: /workspace:/workspace/packages/contracts:/workspace/packages/remnawave-client:/workspace/packages/awg-config:/workspace/packages/subscription-renderers:/workspace/packages/capabilities:/workspace/apps/controller:/workspace/apps/node-agent:/workspace/apps/subscription-gateway:/workspace/apps/tui
+      AWG_DATABASE_URL: postgresql://awg:lab-only-awg@awg-db:5432/awg
+      # Disposable database recreated per test session; never the lab Controller's `awg` DB.
+      TEST_DATABASE_URL: postgresql://awg:lab-only-awg@awg-db:5432/awg_test
+    networks: [extension, stock-api]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+  awg-db:
+    image: postgres:18.4
+    environment:
+      POSTGRES_USER: awg
+      POSTGRES_PASSWORD: lab-only-awg
+      POSTGRES_DB: awg
+    volumes: [awg-db:/var/lib/postgresql]
+    networks: [extension]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U awg -d awg']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  remnawave-db:
+    image: postgres:18.4
+    profiles: [stock]
+    environment:
+      POSTGRES_USER: remnawave
+      POSTGRES_PASSWORD: lab-only-stock
+      POSTGRES_DB: remnawave
+    volumes: [stock-db:/var/lib/postgresql]
+    networks: [stock-data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U remnawave -d remnawave']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  valkey:
+    image: valkey/valkey:9-alpine
+    profiles: [stock]
+    command: [valkey-server, '--save', '', '--appendonly', 'no', '--unixsocket', /var/run/valkey/valkey.sock, '--unixsocketperm', '777', '--port', '0']
+    volumes: [valkey-socket:/var/run/valkey]
+    networks: [stock-data]
+    healthcheck:
+      test: [CMD, valkey-cli, '-s', /var/run/valkey/valkey.sock, ping]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  remnawave:
+    image: ${REMNAWAVE_IMAGE:-remnawave/backend:3.4.4}
+    profiles: [stock]
+    environment:
+      APP_PORT: '3000'
+      METRICS_PORT: '3001'
+      API_INSTANCES: '1'
+      DATABASE_URL: postgresql://remnawave:lab-only-stock@remnawave-db:5432/remnawave
+      REDIS_SOCKET: /var/run/valkey/valkey.sock
+      APP_SECRET: ${REMNAWAVE_APP_SECRET:-lab-only-change-before-exposing-64-characters-aaaaaaaaaaaaaaaaaaaaa}
+      FRONT_END_DOMAIN: '*'
+      PANEL_DOMAIN: remnawave
+      # Subscription links shown in the panel point at the loopback entry (served via the Gateway).
+      SUB_PUBLIC_DOMAIN: 127.0.0.1:18444
+      METRICS_USER: lab
+      METRICS_PASS: lab-only
+      # Documented stock env only. Webhooks are a hint; the Controller still reconciles periodically.
+      WEBHOOK_ENABLED: 'true'
+      WEBHOOK_URL: http://controller:8080/webhooks/remnawave
+      WEBHOOK_SECRET_HEADER: ${AWG_WEBHOOK_SECRET:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+    volumes: [valkey-socket:/var/run/valkey]
+    networks: [stock-data, stock-api]
+    depends_on:
+      remnawave-db: {condition: service_healthy}
+      valkey: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, curl, '-f', 'http://localhost:3001/health']
+      interval: 5s
+      timeout: 3s
+      start_period: 90s
+      retries: 30
+  remnawave-node:
+    image: remnawave/node:3.4.1
+    profiles: [stock-node]
+    environment:
+      NODE_PORT: '2222'
+      SECRET_KEY: ${REMNAWAVE_NODE_SECRET:-not-provisioned}
+    networks: [stock-api]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  stock-proxy:
+    image: awg-dev-services:local
+    profiles: [stock]
+    command: [python, /opt/lab/stock_proxy.py]
+    networks: [stock-api]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      remnawave: {condition: service_healthy}
+  panel:
+    # Stock admin panel for developers: https://127.0.0.1:18443 (self-signed lab certificate).
+    image: caddy:2.10.2-alpine
+    profiles: [stock]
+    volumes:
+      - type: bind
+        source: ./panel/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+    networks: [stock-api, ui-publish]
+    ports: ['127.0.0.1:18443:18443', '127.0.0.1:18444:18444']
+    read_only: true
+    tmpfs: [/data, /config, /tmp]
+    # No cap_drop: the caddy binary carries a file capability, which cannot be exec'd with an empty set.
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      remnawave: {condition: service_healthy}
+  subscription-page:
+    # Stock subscription page, wired exactly as install.sh does it: REMNAWAVE_PANEL_URL → AWG Gateway.
+    # Browser: https://127.0.0.1:18444/<shortUuid>. The API token is read from the lab volume.
+    image: remnawave/subscription-page:8.0.0
+    profiles: [stock]
+    entrypoint: [/bin/sh, -c, 'export REMNAWAVE_API_TOKEN="$$(cat /lab-credentials/stock-token)"; exec /bin/sh docker-entrypoint.sh "$$@"', sh]
+    command: [pm2-runtime, start, ecosystem.config.js, --env, production]
+    working_dir: /opt/app
+    environment:
+      APP_PORT: '3010'
+      REMNAWAVE_PANEL_URL: http://gateway:8081
+    volumes: [lab-credentials:/lab-credentials:ro]
+    networks: [stock-api]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  stock-bootstrap:
+    image: awg-dev-services:local
+    profiles: [setup]
+    command: [python, /opt/lab/bootstrap_stock.py]
+    volumes: [lab-credentials:/lab-credentials]
+    networks: [stock-api]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
+  pki-init:
+    image: awg-dev-services:local
+    profiles: [setup]
+    command: [python, /opt/lab/generate_lab_pki.py]
+    volumes: [pki-ca:/pki-ca, pki-controller:/pki-controller, pki-agent:/pki-agent]
+    network_mode: none
+    read_only: true
+    tmpfs: [/tmp]
+  controller:
+    image: awg-dev-services:local
+    profiles: [extension]
+    command: [python, /opt/lab/start_controller.py]
+    environment:
+      AWG_ENVIRONMENT: development
+      AWG_DATABASE_URL: postgresql://awg:lab-only-awg@awg-db:5432/awg
+      REMNAWAVE_API_URL: http://stock-proxy:8080/api
+      AWG_ADMIN_TOKEN: lab-admin-token
+      AWG_GATEWAY_TOKEN: lab-gateway-token
+      AWG_WEBHOOK_SECRET: ${AWG_WEBHOOK_SECRET:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+      AWG_KEY_ENCRYPTION_KEY: bGFiLW9ubHktYXdnLWtleS1ub3QtZm9yLXByb2QtMDA=
+      AWG_AGENT_CA: /pki/ca.crt
+      AWG_CONTROLLER_CERT: /pki/controller.crt
+      AWG_CONTROLLER_KEY: /pki/controller.key
+      AWG_RECONCILE_SECONDS: '5'
+    volumes: [pki-controller:/pki:ro, lab-credentials:/lab-credentials:ro]
+    networks: [extension, stock-api]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    user: '10001:10001'
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      awg-db: {condition: service_healthy}
+  tui:
+    # Terminal administration: `scripts/lab.sh tui`. No published ports; talks to the Controller inside `extension`.
+    image: awg-dev-services:local
+    profiles: [extension]
+    command: [python, -m, awg_tui]
+    stdin_open: true
+    tty: true
+    environment:
+      AWG_CONTROLLER_URL: http://controller:8080
+      AWG_ADMIN_TOKEN: lab-admin-token
+      AWG_PKI_CA_DIR: /pki-ca
+      AWG_CONTROLLER_ID: 00000000-0000-4000-8000-000000000002
+    volumes: [pki-ca:/pki-ca:ro]
+    networks: [extension]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+  gateway:
+    image: awg-dev-services:local
+    profiles: [extension]
+    command: [uvicorn, 'awg_gateway.main:app', '--host', '0.0.0.0', '--port', '8081', '--no-access-log']
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health/live', timeout=3)"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    environment:
+      AWG_GATEWAY_STOCK_URL: http://stock-proxy:8080
+      AWG_GATEWAY_CONTROLLER_URL: http://controller:8080
+      AWG_GATEWAY_TOKEN: lab-gateway-token
+      # Same mode as production behind the stock subscription page / TLS proxy (internal networks only).
+      AWG_GATEWAY_TRUST_FORWARDED: '1'
+      AWG_GATEWAY_SUBPAGE_PASSTHROUGH: '1'
+    networks: [extension, stock-api]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+networks:
+  # Pinned so the Agent's egress deny list covers it exactly (see compose.live.yaml).
+  extension:
+    driver: bridge
+    internal: true
+    ipam: {config: [{subnet: 10.240.3.0/24}]}
+  stock-data: {driver: bridge, internal: true}
+  stock-api: {driver: bridge, internal: true}
+  ui-publish: {driver: bridge}
+volumes:
+  awg-db:
+  stock-db:
+  valkey-socket:
+  lab-credentials:
+  pki-ca:
+  pki-controller:
+  pki-agent:

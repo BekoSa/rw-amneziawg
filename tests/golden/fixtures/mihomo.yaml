@@ -1,0 +1,38 @@
+proxies:
+- name: stock
+  type: direct
+- name: 'Германия: "AWG" #1'
+  type: wireguard
+  ip: 10.81.0.2/32
+  private-key: U1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1M=
+  udp: true
+  mtu: 1420
+  persistent-keepalive: 25
+  peers:
+  - server: de.example.com
+    port: 51820
+    public-key: UFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFA=
+    allowed-ips:
+    - 0.0.0.0/0
+  amnezia-wg-option:
+    version: 2
+    jc: 4
+    jmin: 40
+    jmax: 70
+    s1: 30
+    s2: 40
+    h1: '123456'
+    h2: '234567'
+    h3: '345678'
+    h4: '456789'
+  remote-dns-resolve: true
+  dns:
+  - 1.1.1.1
+proxy-groups:
+- name: select
+  type: select
+  proxies:
+  - stock
+  - 'Германия: "AWG" #1'
+rules:
+- MATCH,select

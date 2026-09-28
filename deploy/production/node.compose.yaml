@@ -1,0 +1,37 @@
+# AWG Agent on a VPN server. Created/used by ./install-node.sh. Runs next to (not inside) Remnawave Node.
+# Bridge networking: AmneziaWG, nftables NAT/egress rules and routes live only in the container namespace.
+name: awg-node
+services:
+  awg-agent:
+    build: {context: '${AWG_SOURCE_DIR:?run install-node.sh}', dockerfile: apps/node-agent/Dockerfile}
+    image: ${AWG_AGENT_IMAGE:-awg-agent:local}
+    restart: unless-stopped
+    env_file: [./pki/node.env]
+    environment:
+      AWG_ISOLATED_RUNTIME: '1'
+      AWG_STATE_DIR: /var/lib/awg-agent
+      AWG_TLS_CA: /pki/ca.crt
+      AWG_TLS_CERT: /pki/agent.crt
+      AWG_TLS_KEY: /pki/agent.key
+      AWG_EGRESS_DENY: ${AWG_EGRESS_DENY:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,169.254.0.0/16}
+    volumes: [agent-state:/var/lib/awg-agent, './pki:/pki:ro']
+    tmpfs: [/tmp, /run/amneziawg]
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    security_opt: [no-new-privileges:true]
+    devices: [/dev/net/tun:/dev/net/tun]
+    sysctls: {net.ipv4.ip_forward: '1'}
+    ports:
+      # Management API: mutual TLS, only the Controller certificate is accepted.
+      - '${AWG_MANAGEMENT_BIND:-0.0.0.0}:${AWG_MANAGEMENT_PORT:-8443}:8443/tcp'
+      # AmneziaWG listen ports of the profiles on this node, e.g. 51820 or 51820-51822.
+      - '${AWG_UDP_BIND:-0.0.0.0}:${AWG_UDP_PORTS:-51820}:${AWG_UDP_PORTS:-51820}/udp'
+    networks: [awg]
+networks:
+  awg:
+    driver: bridge
+    # Only the lab installer test sets true (no egress through the developer's host).
+    internal: ${AWG_NODE_INTERNAL_NETWORK:-false}
+volumes:
+  agent-state:

@@ -1,0 +1,2 @@
+FROM awg-dev-agent:local
+COPY scripts/live_client.py /opt/lab/

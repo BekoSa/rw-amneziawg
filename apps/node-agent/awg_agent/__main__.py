@@ -1,3 +1,4 @@
+import logging
 import os
 import ssl
 from pathlib import Path
@@ -19,7 +20,14 @@ class ControllerTLSProtocol(H11Protocol):
         super().connection_made(transport)
         tls = transport.get_extra_info('ssl_object')
         expected = 'spiffe://awg/controller/' + str(UUID(os.environ['AWG_CONTROLLER_ID']))
-        if tls is None or not authorized_controller(tls.getpeercert(), expected):
+        certificate = tls.getpeercert() if tls is not None else None
+        if not certificate or not authorized_controller(certificate, expected):
+            # Identities only (no keys): tells the operator which Controller this node was enrolled for.
+            presented = [value for kind, value in (certificate or {}).get('subjectAltName', ()) if kind == 'URI']
+            logging.getLogger('uvicorn.error').warning(
+                'Rejected management connection: this node accepts %s, the client presented %s. '
+                'Issue a new node key from this panel and re-run install-node.sh --reenroll.',
+                expected, presented or 'no client certificate')
             transport.close()
 
 

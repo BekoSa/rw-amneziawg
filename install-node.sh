@@ -8,6 +8,7 @@ set -eu
 SOURCE_DIR=$(cd "$(dirname "$0")" && pwd)
 DIR=/opt/awg-node
 SECRET_FILE=''
+REENROLL=0
 UDP_PORTS=''
 MANAGEMENT_PORT=''  # default: the port chosen in the TUI (carried by the node key), else 8443
 MANAGEMENT_BIND=0.0.0.0
@@ -21,6 +22,7 @@ UDP_BIND=0.0.0.0
 while [ $# -gt 0 ]; do
     case $1 in
         --secret-file) SECRET_FILE=$2; shift 2 ;;
+        --reenroll) REENROLL=1; shift ;;       # replace the node key (e.g. panel reinstalled); keeps ports
         --dir) DIR=$2; shift 2 ;;
         --udp-ports) UDP_PORTS=$2; shift 2 ;;              # e.g. 41234 or 41234-41236; default: random free port
         --management-port) MANAGEMENT_PORT=$2; shift 2 ;;
@@ -118,7 +120,7 @@ else
     say 'Building the Agent image (pinned amneziawg-go and amneziawg-tools, see apps/node-agent/Dockerfile)'
     dc build awg-agent
 fi
-if [ -z "$SECRET_FILE" ] && [ -f "$DIR/pki/agent.crt" ] && [ -f "$DIR/pki/node.env" ]; then
+if [ -z "$SECRET_FILE" ] && [ "$REENROLL" = 0 ] && [ -f "$DIR/pki/agent.crt" ] && [ -f "$DIR/pki/node.env" ]; then
     # Re-run (update): keep the enrolled identity; the node key is needed only for the first install.
     NODE_ID=$(sed -n 's/^AWG_NODE_ID=//p' "$DIR/pki/node.env")
     say "Node $NODE_ID is already enrolled; updating in place"

@@ -5,6 +5,7 @@ import os
 import secrets
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from textual import on, work
@@ -62,6 +63,14 @@ def suggest_port(node: dict | None, profiles: list[dict], profile_id: str | None
     return next(port for port in iter(lambda: rng.randint(20000, 59999), None) if port not in used)
 
 
+def node_host(node: dict | None) -> str:
+    """The address the node was registered with: usually also the one clients connect to."""
+    try:
+        return urlsplit((node or {}).get('registration', {}).get('management_url', '')).hostname or ''
+    except ValueError:
+        return ''
+
+
 def field(label: str, widget) -> Vertical:
     """A labelled form field: filled inputs stay recognisable (placeholders vanish once typed into)."""
     return Vertical(Label(label), widget, classes='field')
@@ -97,7 +106,10 @@ class ProfileScreen(ModalScreen[bool]):
         super().__init__()
         self.api, self.nodes, self.squads, self.initial = api, nodes, squads, profile
         self.profiles = profiles or []
-        self.port_touched = profile is not None  # an existing profile keeps its port
+        self.port_touched = profile is not None  # an existing profile keeps its port and endpoint
+        self.host_touched = profile is not None
+        only = self.nodes[0] if len(self.nodes) == 1 else None
+        self.default_node = self.node_by_id((profile.get('node_ids') or [None])[0]) if profile else only
         self.profile_id = (profile or {}).get('profile_id') or str(uuid4())
         self.saved = profile is not None
         self.digest = None
@@ -114,13 +126,13 @@ class ProfileScreen(ModalScreen[bool]):
                 yield field('Название в подписке (видят пользователи)',
                             Input(p.get('name', ''), placeholder='например: Germany · AWG', id='name'))
                 yield field('Нода', Select([(n['registration']['name'], n['registration']['node_id']) for n in self.nodes],
-                                           prompt='выберите ноду', id='node', value=(p.get('node_ids') or [Select.NULL])[0]))
+                                           prompt='выберите ноду', id='node',
+                                           value=self.default_node['registration']['node_id'] if self.default_node else Select.NULL))
                 with Horizontal(classes='row endpoint'):
-                    yield field('Endpoint — адрес ноды для клиентов', Input(p.get('endpoint', {}).get('host', ''),
-                                                                          placeholder='de.example.com', id='host'))
-                    port = p.get('endpoint', {}).get('port') or suggest_port(
-                        self.node_by_id((p.get('node_ids') or [None])[0]) or (self.nodes[0] if len(self.nodes) == 1 else None),
-                        self.profiles, self.profile_id)
+                    yield field('Endpoint — адрес ноды для клиентов (подставлен адрес ноды)',
+                                Input(p.get('endpoint', {}).get('host', '') or node_host(self.default_node),
+                                      placeholder='de.example.com', id='host'))
+                    port = p.get('endpoint', {}).get('port') or suggest_port(self.default_node, self.profiles, self.profile_id)
                     yield field('UDP-порт (открыт на ноде)', Input(str(port), id='port'))
                 with Horizontal(classes='row'):
                     yield field('Пул адресов IPv4', Input(net.get('ipv4_pool', '10.8.0.0/24'), id='pool'))
@@ -152,6 +164,11 @@ class ProfileScreen(ModalScreen[bool]):
     def port_edited(self, event: Input.Changed):
         if event.input.has_focus:
             self.port_touched = True
+
+    @on(Input.Changed, '#host')
+    def host_edited(self, event: Input.Changed):
+        if event.input.has_focus:
+            self.host_touched = True
 
     def draft(self) -> dict:
         value = lambda widget_id: self.query_one(f'#{widget_id}', Input).value.strip()
@@ -186,8 +203,12 @@ class ProfileScreen(ModalScreen[bool]):
     @on(Select.Changed, '#version')
     @on(Select.Changed, '#node')
     def select_changed(self, event: Select.Changed):
-        if event.select.id == 'node' and event.value is not Select.NULL and not self.port_touched:
-            self.query_one('#port', Input).value = str(suggest_port(self.node_by_id(event.value), self.profiles, self.profile_id))
+        if event.select.id == 'node' and event.value is not Select.NULL:
+            node = self.node_by_id(event.value)
+            if not self.port_touched:
+                self.query_one('#port', Input).value = str(suggest_port(node, self.profiles, self.profile_id))
+            if not self.host_touched and node_host(node):
+                self.query_one('#host', Input).value = node_host(node)
         if event.select.has_focus:  # a user choice, not the initial/programmatic value
             self.changed()
             self.status('Черновик изменён: сохраните и проверьте заново.')

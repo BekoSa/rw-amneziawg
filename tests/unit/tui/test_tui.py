@@ -187,6 +187,7 @@ async def test_new_profile_takes_the_port_published_by_the_node(app):
         await pilot.press('n')
         await pilot.pause()
         assert app.screen.query_one('#port', Input).value == '43210', 'single node: its published port'
+        assert app.screen.query_one('#host', Input).value == 'de', 'and its registered address'
 
 
 
@@ -206,3 +207,23 @@ def test_init_pki_reissues_controller_certificate_for_a_new_controller_id(tmp_pa
     setup.init_pki(ca, ctl, '00000000-0000-4000-8000-000000000002', controller_uid=os.getuid())
     assert uris() == ['spiffe://awg/controller/00000000-0000-4000-8000-000000000002']
     assert (ca / 'ca.crt').read_bytes() == first_ca, 'the CA (and every enrolled node) is kept'
+
+
+@pytest.mark.asyncio
+async def test_choosing_a_node_fills_endpoint_address_and_port(app):
+    from textual.widgets import Input, Select
+    app.fake.data['nodes'][0]['capabilities'] = {'agent_version': 't', 'listen_ports': [43210]}
+    app.fake.data['nodes'].append({'registration': {'node_id': '00000000-0000-4000-8000-000000000002', 'name': 'nl-1',
+                                                    'management_url': 'https://203.0.113.9:2525', 'enabled': True},
+                                   'online': True, 'last_seen_at': None, 'deployments': [],
+                                   'capabilities': {'agent_version': 't', 'listen_ports': [31337]}})
+    async with app.run_test(size=(160, 60)) as pilot:
+        await pilot.pause()
+        await pilot.press('n')
+        await pilot.pause()
+        screen = app.screen
+        assert screen.query_one('#host', Input).value == '', 'two nodes: nothing chosen yet'
+        screen.query_one('#node', Select).value = '00000000-0000-4000-8000-000000000002'
+        await pilot.pause()
+        assert screen.query_one('#host', Input).value == '203.0.113.9'
+        assert screen.query_one('#port', Input).value == '31337'

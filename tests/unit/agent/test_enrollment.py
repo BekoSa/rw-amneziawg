@@ -111,3 +111,56 @@ def test_legacy_migration_crash_keeps_original_identity(tmp_path, monkeypatch, f
         enroll(node_key(9555), tmp_path)
     assert count == failure_at, 'migration fault injection must execute'
     assert {name: (tmp_path / name).read_bytes() for name in names} == before
+
+
+@pytest.mark.parametrize('existing', ['fresh', 'atomic', 'legacy'])
+def test_root_unpack_publishes_secure_bundle_readable_by_installer_owner(tmp_path, existing):
+    """Docker root may migrate legacy PKI, but the invoking installer must read it."""
+    if os.geteuid() != 0:
+        pytest.skip('ownership reproduction requires isolated root test container')
+    import subprocess
+    import sys
+    target = tmp_path / 'pki'
+    target.mkdir()
+    if existing != 'fresh':
+        enroll(node_key(9444), target)
+    if existing == 'atomic':
+        (target / '.enrollment').chmod(0o700)
+        (target / 'current').resolve().chmod(0o700)
+    if existing == 'legacy':
+        for name in ('ca.crt', 'agent.crt', 'agent.key', 'node.env'):
+            path = target / name
+            value = path.read_bytes()
+            path.unlink()
+            path.write_bytes(value)
+            path.chmod(0o600 if name == 'agent.key' else 0o644)
+        (target / 'current').unlink()
+    # A bind-mounted caller directory is owned by the unprivileged CI runner.
+    for parent in [tmp_path.parent.parent, tmp_path.parent, tmp_path]:
+        parent.chmod(0o755)
+    try:
+        os.chown(target, 1001, 1001)
+    except PermissionError:
+        pytest.skip('ownership reproduction requires CHOWN/SETUID/SETGID in isolated test container')
+    enroll(node_key(9555), target)
+    def as_installer():
+        os.setgroups([])
+        os.setgid(1001)
+        os.setuid(1001)
+    result = subprocess.run([sys.executable, '-c',
+        'import pathlib,sys; p=pathlib.Path(sys.argv[1]); '
+        'assert "AWG_NODE_MANAGEMENT_PORT=9555\\n" in (p/"node.env").read_text(); '
+        'assert (p/"agent.crt").read_bytes()', str(target)],
+        preexec_fn=as_installer, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    for expression in ['(p/"agent.key").read_bytes()', 'list((p/".enrollment").iterdir())']:
+        denied = subprocess.run([sys.executable, '-c',
+            'import pathlib,sys; p=pathlib.Path(sys.argv[1]); ' + expression, str(target)],
+            preexec_fn=as_installer, capture_output=True, text=True)
+        assert denied.returncode != 0
+        assert "PermissionError" in denied.stderr
+    for path in [target / '.enrollment', (target / 'current').resolve()]:
+        assert path.stat().st_uid == 0
+        assert path.stat().st_mode & 0o777 == 0o711
+    assert (target / 'agent.key').stat().st_uid == 0
+    assert (target / 'agent.key').stat().st_mode & 0o777 == 0o600

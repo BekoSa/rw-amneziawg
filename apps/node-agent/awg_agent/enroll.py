@@ -45,8 +45,10 @@ def enroll(secret: str, directory: Path):
              ('agent.key', payload['key'], 0o600),
              ('node.env', f'AWG_NODE_ID={node}\nAWG_CONTROLLER_ID={controller}\nAWG_NODE_MANAGEMENT_PORT={port}\n', 0o644)]
     generations = directory / '.enrollment'
-    generations.mkdir(exist_ok=True, mode=0o700)
-    generations.chmod(0o700)
+    # Installer/Compose must traverse known public env/certificate paths after root
+    # unpack. Deny directory listing; the private key remains owner-only 0600.
+    generations.mkdir(exist_ok=True, mode=0o711)
+    generations.chmod(0o711)
 
     def sync(path):
         fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
@@ -64,6 +66,9 @@ def enroll(secret: str, directory: Path):
                 output.flush()
                 os.fchmod(output.fileno(), mode)
                 os.fsync(output.fileno())
+        # Keep mkdtemp private until every file is durable, then permit traversal
+        # before publishing the atomic pointer. Secret access stays mode 0600.
+        target.chmod(0o711)
         sync(target)
         sync(generations)
         return target

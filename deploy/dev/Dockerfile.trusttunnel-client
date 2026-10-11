@@ -1,0 +1,8 @@
+FROM awg-dev-tooling:local AS download
+RUN python -c 'import httpx,hashlib,gzip,pathlib; data=httpx.get("https://github.com/MetaCubeX/mihomo/releases/download/v1.19.32/mihomo-linux-amd64-compatible-v1.19.32.gz",follow_redirects=True,timeout=120).raise_for_status().content; assert hashlib.sha256(data).hexdigest()=="ba3ce607747a07f948fc35780e108a4a7c7f552a38b9bd4d115f313ebcb89c20"; pathlib.Path("/tmp/mihomo").write_bytes(gzip.decompress(data))'
+RUN python -c 'import httpx,hashlib,tarfile,io,pathlib; data=httpx.get("https://github.com/TrustTunnel/TrustTunnelClient/releases/download/v1.1.5/trusttunnel_client-v1.1.5-linux-x86_64.tar.gz?download=1",follow_redirects=True,timeout=120).raise_for_status().content; assert hashlib.sha256(data).hexdigest()=="759557812e7a280183f720e373b374f3fccb95758532cf8a94bea903dec2ca96"; archive=tarfile.open(fileobj=io.BytesIO(data)); [(pathlib.Path("/tmp")/name).write_bytes(archive.extractfile(next(m for m in archive.getmembers() if m.name.endswith("/"+name))).read()) for name in ("trusttunnel_client","setup_wizard")]'
+FROM awg-dev-tooling:local
+COPY --from=download --chmod=755 /tmp/mihomo /usr/local/bin/mihomo
+COPY --from=download --chmod=755 /tmp/trusttunnel_client /tmp/setup_wizard /usr/local/bin/
+COPY deploy/dev/trusttunnel/client.py /opt/tt-lab/client.py
+COPY deploy/dev/trusttunnel/target.py /opt/tt-lab/target.py

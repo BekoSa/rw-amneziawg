@@ -1,0 +1,35 @@
+{
+  "additionalProperties": false,
+  "description": "Export metadata is public-safe; content is revealed only on protected wire.",
+  "properties": {
+    "peer_id": {
+      "format": "uuid",
+      "title": "Peer Id",
+      "type": "string"
+    },
+    "format": {
+      "enum": [
+        "deeplink",
+        "toml"
+      ],
+      "title": "Format",
+      "type": "string"
+    },
+    "content": {
+      "format": "password",
+      "maxLength": 1048576,
+      "minLength": 1,
+      "title": "Content",
+      "type": "string",
+      "writeOnly": true
+    }
+  },
+  "required": [
+    "peer_id",
+    "format",
+    "content"
+  ],
+  "title": "TrustTunnelExportResponse",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

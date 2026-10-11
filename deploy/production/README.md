@@ -14,3 +14,8 @@
 (ключ шифрования), том `pki-ca`; на нодах — том `agent-state` и `/opt/awg-node/pki`.
 
 Проверка всего сценария на изолированном стенде: `scripts/lab.sh installer`.
+
+## TrustTunnel и автоматические сертификаты
+
+Отдельные профили TrustTunnel, HTTP-01/TLS-ALPN-01 и автоматическое обновление
+сертификатов на ноде описаны в [инструкции TrustTunnel](../../docs/trusttunnel.md).

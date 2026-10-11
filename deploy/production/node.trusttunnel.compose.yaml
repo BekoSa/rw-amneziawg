@@ -1,0 +1,11 @@
+# Optional overlay copied by install-node.sh --trusttunnel.
+# The installer appends validated port mappings for data and available ACME methods.
+services:
+  awg-agent:
+    environment:
+      TT_ENABLED: '1'
+      TT_ISOLATED_RUNTIME: '1'
+      TT_DATA_PORT: ${TT_DATA_PORT:-443}
+      TT_HTTP_PORT: ${TT_HTTP_PORT:-80}
+      TT_TLS_ALPN_PORT: ${TT_TLS_ALPN_PORT:-443}
+    cap_add: [NET_ADMIN, NET_BIND_SERVICE]

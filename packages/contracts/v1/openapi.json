@@ -270,6 +270,250 @@
           }
         }
       }
+    },
+    "/v1/trusttunnel/deployments/{deployment_id}/validate": {
+      "post": {
+        "operationId": "post_TrustTunnelValidationResult",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustTunnelValidationResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrustTunnelDesired"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trusttunnel/deployments/{deployment_id}/apply": {
+      "put": {
+        "operationId": "put_TrustTunnelActual",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustTunnelActual"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrustTunnelApplyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trusttunnel/deployments/{deployment_id}/state": {
+      "get": {
+        "operationId": "get_TrustTunnelActual",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustTunnelActual"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/trusttunnel/deployments/{deployment_id}/export": {
+      "post": {
+        "operationId": "post_TrustTunnelExportResponse",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustTunnelExportResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "deployment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrustTunnelExportRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/internal/subscriptions/trusttunnel/material": {
+      "post": {
+        "operationId": "post_TrustTunnelMaterial",
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustTunnelMaterial"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionRequest"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1450,6 +1694,694 @@
           "correlation_id"
         ],
         "title": "APIError",
+        "type": "object"
+      },
+      "TrustTunnelTLS": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "maxLength": 253,
+            "minLength": 1,
+            "title": "Domain",
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "environment": {
+            "default": "production",
+            "enum": [
+              "production",
+              "staging"
+            ],
+            "title": "Environment",
+            "type": "string"
+          },
+          "challenge": {
+            "default": "auto",
+            "enum": [
+              "http-01",
+              "tls-alpn-01",
+              "auto"
+            ],
+            "title": "Challenge",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "email"
+        ],
+        "title": "TrustTunnelTLS",
+        "type": "object"
+      },
+      "TrustTunnelEndpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "host": {
+            "maxLength": 253,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "port": {
+            "default": 443,
+            "maximum": 65535,
+            "minimum": 1,
+            "title": "Port",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "host"
+        ],
+        "title": "TrustTunnelEndpoint",
+        "type": "object"
+      },
+      "TrustTunnelProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "trusttunnel.remnawave-extension.io/v1",
+            "default": "trusttunnel.remnawave-extension.io/v1",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "profile_id": {
+            "format": "uuid",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "endpoint": {
+            "$ref": "#/components/schemas/TrustTunnelEndpoint"
+          },
+          "access": {
+            "$ref": "#/components/schemas/AccessSpec"
+          },
+          "node_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 1,
+            "title": "Node Ids",
+            "type": "array"
+          },
+          "tls": {
+            "$ref": "#/components/schemas/TrustTunnelTLS"
+          }
+        },
+        "required": [
+          "profile_id",
+          "name",
+          "endpoint",
+          "tls"
+        ],
+        "title": "TrustTunnelProfile",
+        "type": "object"
+      },
+      "TrustTunnelCredential": {
+        "additionalProperties": false,
+        "properties": {
+          "peer_id": {
+            "format": "uuid",
+            "title": "Peer Id",
+            "type": "string"
+          },
+          "user_uuid": {
+            "format": "uuid",
+            "title": "User Uuid",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "title": "Username",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 1024,
+            "minLength": 32,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "credential_generation": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Credential Generation",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "peer_id",
+          "user_uuid",
+          "username",
+          "password"
+        ],
+        "title": "TrustTunnelCredential",
+        "type": "object"
+      },
+      "TrustTunnelDesired": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "trusttunnel.remnawave-extension.io/v1",
+            "default": "trusttunnel.remnawave-extension.io/v1",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": "1.0",
+            "default": "1.0",
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "deployment_id": {
+            "format": "uuid",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/TrustTunnelProfile"
+          },
+          "clients": {
+            "items": {
+              "$ref": "#/components/schemas/TrustTunnelCredential"
+            },
+            "title": "Clients",
+            "type": "array"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "node_id",
+          "revision",
+          "profile"
+        ],
+        "title": "TrustTunnelDesired",
+        "type": "object"
+      },
+      "TrustTunnelApplyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "desired": {
+            "$ref": "#/components/schemas/TrustTunnelDesired"
+          },
+          "expected_applied_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expected Applied Revision"
+          }
+        },
+        "required": [
+          "desired"
+        ],
+        "title": "TrustTunnelApplyRequest",
+        "type": "object"
+      },
+      "TrustTunnelActual": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "trusttunnel.remnawave-extension.io/v1",
+            "default": "trusttunnel.remnawave-extension.io/v1",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": "1.0",
+            "default": "1.0",
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "deployment_id": {
+            "format": "uuid",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "desired_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Desired Revision"
+          },
+          "validated_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Validated Revision"
+          },
+          "applied_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Applied Revision"
+          },
+          "last_known_good_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Known Good Revision"
+          },
+          "applied_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Applied Digest"
+          },
+          "state": {
+            "$ref": "#/components/schemas/DeploymentState",
+            "default": "DRAFT"
+          },
+          "healthy": {
+            "default": false,
+            "title": "Healthy",
+            "type": "boolean"
+          },
+          "runtime_epoch": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Runtime Epoch"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationIssue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "certificate_state": {
+            "default": "ABSENT",
+            "enum": [
+              "ABSENT",
+              "ISSUING",
+              "VALID",
+              "RENEWING",
+              "ERROR",
+              "EXPIRED"
+            ],
+            "title": "Certificate State",
+            "type": "string"
+          },
+          "certificate_generation": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Certificate Generation",
+            "type": "integer"
+          },
+          "certificate_environment": {
+            "anyOf": [
+              {
+                "enum": [
+                  "production",
+                  "staging"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Certificate Environment"
+          },
+          "not_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Not After"
+          },
+          "fingerprint": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fingerprint"
+          },
+          "served_fingerprint": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Served Fingerprint"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Next Attempt At"
+          },
+          "certificate_error_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Certificate Error Code"
+          }
+        },
+        "required": [
+          "deployment_id"
+        ],
+        "title": "TrustTunnelActual",
+        "type": "object"
+      },
+      "TrustTunnelValidationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "revision": {
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Digest",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "valid",
+          "revision",
+          "digest"
+        ],
+        "title": "TrustTunnelValidationResult",
+        "type": "object"
+      },
+      "TrustTunnelSubscriptionEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": {
+            "format": "uuid",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "peer_id": {
+            "format": "uuid",
+            "title": "Peer Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "endpoint": {
+            "$ref": "#/components/schemas/TrustTunnelEndpoint"
+          },
+          "tls_server_name": {
+            "maxLength": 253,
+            "minLength": 1,
+            "title": "Tls Server Name",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "title": "Username",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 1024,
+            "minLength": 32,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "credential_generation": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Credential Generation",
+            "type": "integer"
+          },
+          "native_deeplink": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Native Deeplink"
+          },
+          "native_toml": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Native Toml"
+          }
+        },
+        "required": [
+          "profile_id",
+          "node_id",
+          "peer_id",
+          "name",
+          "endpoint",
+          "tls_server_name",
+          "username",
+          "password"
+        ],
+        "title": "TrustTunnelSubscriptionEntry",
+        "type": "object"
+      },
+      "TrustTunnelMaterial": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "trusttunnel.remnawave-extension.io/v1",
+            "default": "trusttunnel.remnawave-extension.io/v1",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "user_uuid": {
+            "format": "uuid",
+            "title": "User Uuid",
+            "type": "string"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/TrustTunnelSubscriptionEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_uuid"
+        ],
+        "title": "TrustTunnelMaterial",
+        "type": "object"
+      },
+      "TrustTunnelExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "peer_id": {
+            "format": "uuid",
+            "title": "Peer Id",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "deeplink",
+              "toml"
+            ],
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "peer_id",
+          "format"
+        ],
+        "title": "TrustTunnelExportRequest",
+        "type": "object"
+      },
+      "TrustTunnelExportResponse": {
+        "additionalProperties": false,
+        "description": "Export metadata is public-safe; content is revealed only on protected wire.",
+        "properties": {
+          "peer_id": {
+            "format": "uuid",
+            "title": "Peer Id",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "deeplink",
+              "toml"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "content": {
+            "format": "password",
+            "maxLength": 1048576,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "peer_id",
+          "format",
+          "content"
+        ],
+        "title": "TrustTunnelExportResponse",
         "type": "object"
       }
     },

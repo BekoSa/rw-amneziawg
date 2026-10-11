@@ -71,3 +71,18 @@ class ControllerAPI:
 
     async def rotate_key(self, user_uuid: str):
         return await self.call('POST', f'/api/v1/users/{user_uuid}/rotate-key')
+
+    async def save_trusttunnel_profile(self, profile: dict):
+        return await self.call('PUT', f'/api/v1/trusttunnel/profiles/{profile["profile_id"]}', profile)
+
+    async def validate_trusttunnel_profile(self, profile_id: str):
+        return await self.call('POST', f'/api/v1/trusttunnel/profiles/{profile_id}/validate')
+
+    async def apply_trusttunnel_profile(self, profile_id: str, digest: str):
+        return await self.call('POST', f'/api/v1/trusttunnel/profiles/{profile_id}/apply', {'expected_digest': digest})
+
+    async def rotate_trusttunnel_credentials(self, user_uuid: str):
+        return await self.call('POST', f'/api/v1/trusttunnel/users/{user_uuid}/credentials/rotate')
+
+    async def export_trusttunnel_peer(self, peer_id: str, export_format: str):
+        return await self.call('POST', f'/api/v1/trusttunnel/peers/{peer_id}/export', {'format': export_format})

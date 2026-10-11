@@ -1,0 +1,43 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "domain": {
+      "maxLength": 253,
+      "minLength": 1,
+      "title": "Domain",
+      "type": "string"
+    },
+    "email": {
+      "maxLength": 254,
+      "minLength": 3,
+      "title": "Email",
+      "type": "string"
+    },
+    "environment": {
+      "default": "production",
+      "enum": [
+        "production",
+        "staging"
+      ],
+      "title": "Environment",
+      "type": "string"
+    },
+    "challenge": {
+      "default": "auto",
+      "enum": [
+        "http-01",
+        "tls-alpn-01",
+        "auto"
+      ],
+      "title": "Challenge",
+      "type": "string"
+    }
+  },
+  "required": [
+    "domain",
+    "email"
+  ],
+  "title": "TrustTunnelTLS",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -37,11 +37,26 @@ def main():
     service = AgentService(Path(os.environ.get('AWG_STATE_DIR', '/var/lib/awg-agent')),
                            UUID(os.environ['AWG_NODE_ID']), UserspaceRuntime())
     service.recover()
-    uvicorn.run(create_app(service), host=os.environ.get('AWG_MANAGEMENT_HOST', '0.0.0.0'),
+    trusttunnel = None
+    if os.environ.get('TT_ENABLED') == '1':
+        from .trusttunnel import TrustTunnelService
+        from .trusttunnel_runtime import TrustTunnelRuntime
+        from .certificates import CertificateManager
+        directory = service.directory / 'trusttunnel'
+        trusttunnel = TrustTunnelService(directory, service.node_id,
+            TrustTunnelRuntime(directory / 'runtime'), CertificateManager(directory / 'acme'))
+        trusttunnel.recover()
+        trusttunnel.start()
+    try:
+        uvicorn.run(create_app(service, trusttunnel=trusttunnel), host=os.environ.get('AWG_MANAGEMENT_HOST', '0.0.0.0'),
                 port=int(os.environ.get('AWG_MANAGEMENT_PORT', '8443')), http=ControllerTLSProtocol,
                 ssl_certfile=os.environ['AWG_TLS_CERT'], ssl_keyfile=os.environ['AWG_TLS_KEY'],
                 ssl_ca_certs=os.environ['AWG_TLS_CA'], ssl_cert_reqs=ssl.CERT_REQUIRED,
                 access_log=False, proxy_headers=False, workers=1)
+    finally:
+        if trusttunnel is not None:
+            trusttunnel.close()
+        service.close()
 
 
 if __name__ == '__main__':

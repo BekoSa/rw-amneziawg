@@ -1,0 +1,77 @@
+# Standalone opt-in lab: no published ports, devices or direct client-to-target path.
+name: awg-tt-lab
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  tmpfs: [/tmp:exec]
+services:
+  tooling:
+    <<: *hardened
+    image: awg-dev-tooling:local
+    working_dir: /workspace
+    volumes: [../..:/workspace:ro]
+    environment:
+      PYTHONPATH: /workspace:/workspace/packages/contracts:/workspace/packages/awg-config:/workspace/apps/node-agent
+      TT_LAB: '1'
+    networks:
+      management: {ipv4_address: 10.241.12.3}
+      client-control: {ipv4_address: 10.241.13.2}
+  pebble:
+    <<: *hardened
+    image: awg-tt-pebble:local
+    build: {context: ../.., dockerfile: deploy/dev/Dockerfile.pebble}
+    command: [-config, /test/tt-pebble.json, '-strict=false']
+    environment:
+      PEBBLE_VA_NOSLEEP: '1'
+      PEBBLE_VA_ALWAYS_VALID: '0'
+      PEBBLE_AUTHZREUSE: '0'
+      PEBBLE_WFE_NONCEREJECT: '0'
+    networks:
+      underlay: {ipv4_address: 10.241.10.4}
+      management: {ipv4_address: 10.241.12.4}
+  tt-server:
+    <<: *hardened
+    image: awg-tt-server:local
+    build: {context: ../.., dockerfile: deploy/dev/Dockerfile.trusttunnel-server}
+    command: [python, /opt/tt-lab/server.py]
+    environment:
+      TT_ENABLED: '1'
+      TT_ISOLATED_RUNTIME: '1'
+      TT_ISOLATED_TEST: '1'
+      TT_TEST_ACME_DIRECTORY: https://pebble:14000/dir
+      TT_TEST_ACME_CA: /opt/tt-lab/pebble-ca.pem
+      TT_DATA_PORT: '8444'
+      TT_HTTP_PORT: '80'
+      TT_TLS_ALPN_PORT: '443'
+    volumes: [tt-state:/state]
+    networks:
+      underlay:
+        ipv4_address: 10.241.10.2
+        aliases: [vpn.tt.test, alpn.tt.test]
+      target: {ipv4_address: 192.0.0.10}
+      management: {ipv4_address: 10.241.12.2}
+  tt-client:
+    <<: *hardened
+    image: awg-tt-client:local
+    build: {context: ../.., dockerfile: deploy/dev/Dockerfile.trusttunnel-client}
+    command: [python, /opt/tt-lab/client.py]
+    networks:
+      # Deliberately points to a container without challenge listeners.
+      underlay: {ipv4_address: 10.241.10.3, aliases: [fail.tt.test]}
+      client-control: {ipv4_address: 10.241.13.3}
+  tt-target:
+    <<: *hardened
+    image: awg-tt-client:local
+    command: [python, /opt/tt-lab/target.py]
+    networks:
+      target: {ipv4_address: 192.0.0.9}
+networks:
+  underlay: {driver: bridge, internal: true, ipam: {config: [{subnet: 10.241.10.0/24}]}}
+  # IANA protocol-assignment exceptions accepted by upstream is_global_ipv4.
+  # Entirely synthetic/internal: no Internet routing, private targets stay forbidden.
+  target: {driver: bridge, internal: true, ipam: {config: [{subnet: 192.0.0.8/29, gateway: 192.0.0.14}]}}
+  management: {driver: bridge, internal: true, ipam: {config: [{subnet: 10.241.12.0/24}]}}
+  client-control: {driver: bridge, internal: true, ipam: {config: [{subnet: 10.241.13.0/24}]}}
+volumes:
+  tt-state:

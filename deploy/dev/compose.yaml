@@ -17,7 +17,8 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     read_only: true
-    tmpfs: [/tmp]
+    # CLI regression tests execute temporary shell stubs inside this isolated container.
+    tmpfs: [/tmp:exec]
   awg-db:
     image: postgres:18.4
     environment:

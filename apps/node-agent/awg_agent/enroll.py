@@ -8,6 +8,7 @@ import base64
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from uuid import UUID
 
@@ -22,6 +23,9 @@ def enroll(secret: str, directory: Path):
     if not secret.startswith(PREFIX):
         raise ValueError('not an AWG node key (expected awgnode1:...)')
     payload = json.loads(base64.urlsafe_b64decode(secret[len(PREFIX):]))
+    port = payload.get('management_port', 8443)
+    if type(port) is not int or not 1 <= port <= 65535:
+        raise ValueError('invalid management port in node key')
     node, controller = str(UUID(payload['node_id'])), str(UUID(payload['controller_id']))
     ca = x509.load_pem_x509_certificate(payload['ca'].encode())
     cert = x509.load_pem_x509_certificate(payload['cert'].encode())
@@ -36,17 +40,62 @@ def enroll(secret: str, directory: Path):
     if names != [f'{node}.agents.awg.internal']:
         raise ValueError('certificate is issued for another node')
     directory.mkdir(parents=True, exist_ok=True)
-    os.umask(0o077)
-    for name, field, mode in (('ca.crt', 'ca', 0o644), ('agent.crt', 'cert', 0o644), ('agent.key', 'key', 0o600)):
-        path = directory / name
-        path.write_text(payload[field])
-        path.chmod(mode)
-    port = payload.get('management_port', 8443)
-    if not isinstance(port, int) or not 1 <= port <= 65535:
-        raise ValueError('invalid management port in node key')
     # AWG_NODE_MANAGEMENT_PORT is the published host port (the Agent itself always listens on 8443 inside).
-    (directory / 'node.env').write_text(f'AWG_NODE_ID={node}\nAWG_CONTROLLER_ID={controller}\nAWG_NODE_MANAGEMENT_PORT={port}\n')
-    (directory / 'node.env').chmod(0o644)  # identities only, read by the compose client
+    files = [('ca.crt', payload['ca'], 0o644), ('agent.crt', payload['cert'], 0o644),
+             ('agent.key', payload['key'], 0o600),
+             ('node.env', f'AWG_NODE_ID={node}\nAWG_CONTROLLER_ID={controller}\nAWG_NODE_MANAGEMENT_PORT={port}\n', 0o644)]
+    generations = directory / '.enrollment'
+    generations.mkdir(exist_ok=True, mode=0o700)
+    generations.chmod(0o700)
+
+    def sync(path):
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def generation(values):
+        target = Path(tempfile.mkdtemp(prefix='generation-', dir=generations))
+        for name, value, mode in values:
+            fd = os.open(target / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
+            with os.fdopen(fd, 'wb') as output:
+                output.write(value.encode() if isinstance(value, str) else value)
+                output.flush()
+                os.fchmod(output.fileno(), mode)
+                os.fsync(output.fileno())
+        sync(target)
+        sync(generations)
+        return target
+
+    def link(target, path):
+        temporary = directory / ('.enroll-link-' + os.urandom(12).hex())
+        try:
+            temporary.symlink_to(target)
+            os.replace(temporary, path)
+            sync(directory)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    bundle = generation(files)
+    current = directory / 'current'
+    if not current.exists():
+        # Legacy paths are replaced only after current points at byte-identical copies.
+        existing = [directory / name for name, _, _ in files]
+        if any(path.exists() for path in existing):
+            if not all(path.is_file() for path in existing):
+                raise ValueError('incomplete existing enrollment')
+            legacy = generation([(name, (directory / name).read_bytes(), mode) for name, _, mode in files])
+            link(str(legacy.relative_to(directory)), current)
+        else:
+            link(str(bundle.relative_to(directory)), current)
+    for name, _, _ in files:
+        path = directory / name
+        target = 'current/' + name
+        if not path.is_symlink() or os.readlink(path) != target:
+            link(target, path)
+    # One durable pointer switch publishes the entire CA/cert/key/identity generation.
+    link(str(bundle.relative_to(directory)), current)
     return node
 
 

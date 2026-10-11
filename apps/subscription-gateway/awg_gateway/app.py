@@ -8,16 +8,18 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import os
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, unquote_plus
 
 import httpx
 from fastapi import FastAPI, Request
 from starlette.responses import Response, StreamingResponse
 
 from awg_contracts import SubscriptionMaterial
-from awg_capabilities import FAMILIES, identify, mihomo_core, mihomo_core_supports
+from awg_contracts.trusttunnel import TrustTunnelMaterial
+from awg_capabilities import FAMILIES, identify, mihomo_core, mihomo_core_supports, trusttunnel_supported
 from subscription_renderers import (PROVIDER_HEADER, RawAWGRenderer, accepts, enrich, enrich_info, info_document,
                                     mihomo_provider)
+from subscription_renderers import trusttunnel as tt_renderer
 
 log = logging.getLogger('uvicorn.error')
 
@@ -210,6 +212,32 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
             await result.aclose()
             app.state.controller.cookies.clear()
 
+    async def tt_material(token: str, native_format: str | None = None) -> TrustTunnelMaterial:
+        url = config.controller_url.rstrip('/') + '/v1/internal/subscriptions/trusttunnel/material'
+        if native_format:
+            url += '?native_format=' + native_format
+        result = await app.state.controller.send(httpx.Request('POST', url,
+            headers={'authorization': 'Bearer ' + config.controller_token, 'accept': 'application/json'},
+            json={'subscription_token': token}), stream=True, follow_redirects=False)
+        try:
+            result.raise_for_status()
+            if result.headers.get('content-encoding', 'identity') != 'identity':
+                raise ValueError('compressed material unsupported')
+            chunks, size = [], 0
+            async for chunk in raw_chunks(result):
+                size += len(chunk)
+                if size > config.max_material_bytes:
+                    raise ValueError('material exceeds size limit')
+                chunks.append(chunk)
+            parsed = TrustTunnelMaterial.model_validate_json(b''.join(chunks))
+            age = (datetime.now(timezone.utc) - parsed.generated_at).total_seconds()
+            if not -5 <= age <= config.material_max_age or len(parsed.entries) > 256:
+                raise ValueError('material stale or oversized')
+            return parsed
+        finally:
+            await result.aclose()
+            app.state.controller.cookies.clear()
+
     async def send_stock(request: Request, raw_path: bytes, query: bytes, body: bytes = b''):
         headers = sanitize_headers(request.scope['headers'], request=True, trust_forwarded=config.trust_forwarded)
         url = httpx.URL(config.stock_url).copy_with(raw_path=raw_path + (b'?' + query if query else b''))
@@ -265,6 +293,8 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
             log.info('subscription client=mihomo-provider core=%s awg=skipped reason=stock-denied', version)
             return Response(status_code=upstream.status_code if upstream.status_code != 200 else 403,
                             headers={'cache-control': 'no-store'})
+        awg_available = True
+        peers = []
         try:
             async with asyncio.timeout(config.enrichment_timeout):
                 peers = [p for p in (await material(token)).peers
@@ -274,9 +304,77 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
             # 503 keeps the provider the core already has; never include exception text.
             app.state.render_errors += 1
             log.warning('subscription client=mihomo-provider core=%s awg=failed error=%s', version, type(error).__name__)
+            awg_available = False
+            body = mihomo_provider([])
+        tt_available = False
+        if (not stock_denied(upstream) and trusttunnel_supported(request.headers.get('user-agent', ''))
+                and not CONDITIONAL_HEADERS.intersection(request.headers)
+                and upstream.headers.get('content-encoding', 'identity').lower() == 'identity'
+                and 'no-transform' not in upstream.headers.get('cache-control', '').lower()):
+            try:
+                async with asyncio.timeout(config.enrichment_timeout):
+                    entries = (await tt_material(token)).entries
+                # Keep AWG provider output byte-for-byte when TT has nothing publishable.
+                body = tt_renderer.enrich(body, entries, request.headers.get('user-agent', ''))
+                tt_available = bool(entries)
+            except Exception as error:
+                app.state.render_errors += 1
+                log.warning('subscription client=mihomo-provider trusttunnel=failed error=%s', type(error).__name__)
+        if not awg_available and not tt_available:
             return Response(status_code=503, headers={'cache-control': 'no-store'})
         log.info('subscription client=mihomo-provider core=%s awg=served proxies=%d', version, len(peers))
         return Response(body, media_type='text/yaml; charset=utf-8', headers={'cache-control': 'private, no-store'})
+
+    async def tt_download(request: Request, token: str):
+        # Preserve stock query bytes/order/escaping; only gateway's two controls are consumed.
+        controls, stock_query = {}, []
+        for part in request.scope['query_string'].split(b'&'):
+            if not part:
+                continue
+            key, _, value = part.partition(b'=')
+            decoded = unquote_plus(key.decode('ascii'))
+            if decoded in ('format', 'i'):
+                if decoded in controls:
+                    return Response(status_code=400, headers={'cache-control': 'no-store'})
+                controls[decoded] = unquote_plus(value.decode('ascii'))
+            else:
+                stock_query.append(part)
+        format = controls.get('format', 'toml')
+        index = controls.get('i', '0')
+        if format not in ('toml', 'deeplink') or re.fullmatch(r'\d{1,3}', index) is None:
+            return Response(status_code=400, headers={'cache-control': 'no-store'})
+        upstream = await send_stock(request, (config.subscription_prefix + token).encode(), b'&'.join(stock_query))
+        iterator = raw_chunks(upstream).__aiter__()
+        if (stock_denied(upstream) or not config.controller_token
+                or CONDITIONAL_HEADERS.intersection(request.headers)
+                or upstream.headers.get('content-encoding', 'identity').lower() != 'identity'
+                or 'no-transform' in upstream.headers.get('cache-control', '').lower()):
+            return stream_back(upstream, [], iterator)
+        buffered, size = [], 0
+        async for chunk in iterator:
+            buffered.append(chunk)
+            size += len(chunk)
+            if size > config.max_enrichment_bytes:
+                return stream_back(upstream, buffered, iterator)
+        stock = b''.join(buffered)
+        headers = sanitize_headers(upstream.headers.raw)
+        await upstream.aclose()
+        try:
+            async with asyncio.timeout(config.enrichment_timeout):
+                entry = (await tt_material(token, format)).entries[int(index)]
+                body = tt_renderer.native(entry, format)
+            headers = [(name, value) for name, value in headers
+                       if name.lower() not in BODY_VALIDATORS | {b'content-type', b'content-disposition'}]
+            slug = re.sub(r'[^A-Za-z0-9._-]+', '-', entry.name).strip('-.')[:48] or 'trusttunnel'
+            suffix = '.toml' if format == 'toml' else '.txt'
+            headers.extend([(b'cache-control', b'private, no-store'),
+                            (b'content-type', b'application/toml; charset=utf-8' if format == 'toml' else b'text/plain; charset=utf-8'),
+                            (b'content-disposition', f'attachment; filename="{slug}{suffix}"'.encode())])
+            return plain_response(200, headers, body)
+        except Exception as error:
+            app.state.render_errors += 1
+            log.warning('subscription client=native trusttunnel=failed error=%s', type(error).__name__)
+            return plain_response(upstream.status_code, headers, stock)
 
     @app.api_route('/{path:path}', methods=['GET', 'HEAD'])
     async def proxy(request: Request, path: str):
@@ -287,6 +385,11 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
         if allowed_path.fullmatch(raw) is None and not passthrough:
             return Response(status_code=404, headers={'cache-control': 'no-store'})
         matched = None if passthrough else route.fullmatch(request.url.path)
+        if matched and matched['suffix'] == 'trusttunnel' and request.method == 'GET':
+            try:
+                return await tt_download(request, matched['token'])
+            except httpx.HTTPError:
+                return Response('Stock subscription unavailable', status_code=502, headers={'cache-control': 'no-store'})
         if matched and matched['suffix'] is None and request.method == 'GET' and request.headers.get(PROVIDER_HEADER) == 'mihomo':
             try:
                 return await awg_provider(request, matched['token'])
@@ -350,6 +453,7 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
             return stream_back(upstream, buffered, iterator)
         await upstream.aclose()
         app.state.render_total += 1
+        result = stock
         try:
             async with asyncio.timeout(config.enrichment_timeout):
                 peers = await material(matched['token'])
@@ -362,16 +466,29 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
             # profile's node is not READY/online (see `awg status`).
             log.info('subscription client=%s awg=%s ready_peers=%d', client,
                      'added' if result != stock else 'unchanged', len(peers.peers))
-            if result != stock:
-                response_headers = [(name, value) for name, value in response_headers if name.lower() not in BODY_VALIDATORS]
-                response_headers.append((b'cache-control', b'private, no-store'))
-                return plain_response(200, response_headers, result)
         except Exception as error:
             # Never include exception text: it may contain token URLs or peer keys.
             app.state.render_errors += 1
             status = error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None
             log.warning('subscription client=%s awg=failed error=%s%s', client, type(error).__name__,
                         f' controller_status={status}' if status else '')
+        if info or trusttunnel_supported(request.headers.get('user-agent', '')):
+            try:
+                async with asyncio.timeout(config.enrichment_timeout):
+                    entries = (await tt_material(matched['token'], 'all' if info else None)).entries
+                    if info:
+                        download = ((public_url(upstream) or config.subscription_prefix + matched['token']).split('?', 1)[0].rstrip('/')
+                                    + '/trusttunnel')
+                        result = tt_renderer.enrich_info(result, entries, download)
+                    else:
+                        result = tt_renderer.enrich(result, entries, request.headers.get('user-agent', ''))
+            except Exception as error:
+                app.state.render_errors += 1
+                log.warning('subscription client=%s trusttunnel=failed error=%s', client, type(error).__name__)
+        if result != stock:
+            response_headers = [(name, value) for name, value in response_headers if name.lower() not in BODY_VALIDATORS]
+            response_headers.append((b'cache-control', b'private, no-store'))
+            return plain_response(200, response_headers, result)
         return plain_response(upstream.status_code, response_headers, stock)
 
     return app

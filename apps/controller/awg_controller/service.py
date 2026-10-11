@@ -10,6 +10,7 @@ from .db import LOCK_ID
 from .domain import KeyVault, eligible, counter_delta
 from .agent_client import AgentError
 from remnawave_client import UpstreamError
+from .trusttunnel import TrustTunnelController, TT_LOCK_ID
 
 
 async def one(conn, query, params=()):
@@ -28,6 +29,8 @@ class Controller:
         self.wakeup = asyncio.Event()
         self.metrics = {'reconcile_runs':0,'reconcile_errors':0,'apply':0,'apply_errors':0}
         self.last_upstream_ok = None
+        self.trusttunnel = TrustTunnelController(db, upstream, agents, settings)
+        self.trusttunnel.wakeup = self.wakeup
 
     async def error(self, code, entity=None):
         async with self.db.connect() as conn:
@@ -43,6 +46,12 @@ class Controller:
                 raise
             except Exception as failure:
                 self.metrics['reconcile_errors'] += 1
+                try:
+                    # Outages retain authoritative cache facts; enforce known local
+                    # expiry and poll certificate status without inferring deletion.
+                    await self.trusttunnel.reconcile_cached()
+                except Exception:
+                    pass
                 try:
                     # An expired/revoked API token is the most common cause and needs an operator: name it.
                     await self.error('REMNAWAVE_TOKEN_REJECTED' if getattr(failure, 'unauthorized', False) else 'RECONCILE_FAILED')
@@ -88,6 +97,9 @@ class Controller:
             raise ValueError('Mock Agent cannot be registered as a managed node')
         async with self.db.connect() as conn:
             await conn.execute('SELECT pg_advisory_xact_lock(%s)',(LOCK_ID,))
+            # Lock ordering is always AWG -> TT. Node enable/disable facts must
+            # serialize with TT cached delivery and explicit secret publication.
+            await conn.execute('SELECT pg_advisory_xact_lock(%s)',(TT_LOCK_ID,))
             await conn.execute('''INSERT INTO awg_nodes(id,registration,capabilities,online,last_seen_at)
                 VALUES(%s,%s,%s,true,now()) ON CONFLICT(id) DO UPDATE SET registration=EXCLUDED.registration,
                 capabilities=EXCLUDED.capabilities,online=true,last_seen_at=now()''',
@@ -176,10 +188,14 @@ class Controller:
                                 await self._desired(conn,profile,node,users)
                 for deployment in await rows(conn,'SELECT d.*,n.registration FROM awg_deployments d JOIN awg_nodes n ON n.id=d.node_id WHERE desired IS NOT NULL'):
                     await self._deliver(conn,deployment)
+                await self.trusttunnel.reconcile(users)
             finally:
                 await conn.execute('SELECT pg_advisory_unlock(%s)',(LOCK_ID,))
 
     async def _persist_users(self, conn, users, deleted):
+        # Authoritative lifecycle updates and TT cache-based reconciliation share
+        # a boundary. TT-only callers never acquire LOCK_ID in the reverse order.
+        await conn.execute('SELECT pg_advisory_xact_lock(%s)', (TT_LOCK_ID,))
         for user in users.values():
             old = await one(conn,'SELECT reset_at,encrypted_key FROM awg_users WHERE id=%s',(user.user_uuid,))
             if old:

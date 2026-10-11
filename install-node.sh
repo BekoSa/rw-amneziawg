@@ -18,6 +18,10 @@ NO_PULL=0
 DEFAULT_REGISTRY=ghcr.io/bekosa/rw-amneziawg
 IMAGE_TAG=latest
 UDP_BIND=0.0.0.0
+TT_ENABLED=''
+TT_DATA_PORT=''
+TT_HTTP_PORT=''
+TT_TLS_ALPN_PORT=''
 
 while [ $# -gt 0 ]; do
     case $1 in
@@ -32,12 +36,50 @@ while [ $# -gt 0 ]; do
         --image-tag) IMAGE_TAG=$2; shift 2 ;;
         --ref) REF=$2; shift 2 ;;              # git ref of fetched files (standalone mode)
         --no-pull) NO_PULL=1; shift ;;         # use an image already present locally
+        --trusttunnel) TT_ENABLED=1; shift ;;
+        --trusttunnel-port) TT_DATA_PORT=$2; shift 2 ;;
+        --acme-http-port) TT_HTTP_PORT=$2; shift 2 ;;       # 80 or 0 (disabled)
+        --acme-tls-port) TT_TLS_ALPN_PORT=$2; shift 2 ;;    # 443 or 0 (occupied by another service)
         *) echo 'Usage: sudo ./install-node.sh [--secret-file FILE] [--udp-ports PORT|FROM-TO] [--management-port 8443] [--management-bind IP]'; exit 2 ;;
     esac
 done
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
+
+previous() { sed -n "s/^$1=//p" "$DIR/.env" 2>/dev/null | head -1; }
+TT_ENABLED=${TT_ENABLED:-$(previous TT_ENABLED)}
+TT_ENABLED=${TT_ENABLED:-0}
+TT_DATA_PORT=${TT_DATA_PORT:-$(previous TT_DATA_PORT)}
+TT_DATA_PORT=${TT_DATA_PORT:-443}
+TT_HTTP_PORT=${TT_HTTP_PORT:-$(previous TT_HTTP_PORT)}
+TT_HTTP_PORT=${TT_HTTP_PORT:-80}
+TT_TLS_ALPN_PORT=${TT_TLS_ALPN_PORT:-$(previous TT_TLS_ALPN_PORT)}
+TT_TLS_ALPN_PORT=${TT_TLS_ALPN_PORT:-443}
+case $TT_DATA_PORT in ''|*[!0-9]*) die 'Invalid TrustTunnel data port' ;; esac
+[ "${#TT_DATA_PORT}" -le 5 ] && [ "$TT_DATA_PORT" -ge 1 ] && [ "$TT_DATA_PORT" -le 65535 ] || die 'Invalid TrustTunnel data port'
+case $TT_DATA_PORT in 80|8443|9443|10080|10443) die 'Invalid TrustTunnel data port: reserved container service port' ;; esac
+case $TT_HTTP_PORT in 0|80) ;; *) die 'Invalid TrustTunnel HTTP-01 port (80 or 0 required)' ;; esac
+case $TT_TLS_ALPN_PORT in 0|443) ;; *) die 'Invalid TrustTunnel TLS-ALPN-01 port (443 or 0 required)' ;; esac
+if [ "$TT_ENABLED" = 1 ] && [ "$TT_HTTP_PORT" = 0 ] && [ "$TT_TLS_ALPN_PORT" = 0 ]; then
+    die 'Invalid TrustTunnel ingress: at least one ACME method must be reachable'
+fi
+
+
+check_tt_awg_overlap() {
+    [ "$TT_ENABLED" = 1 ] && [ -n "$UDP_PORTS" ] || return 0
+    case $UDP_PORTS in *[!0-9-]*|-*|*-*-*) die 'Invalid AmneziaWG UDP ports' ;; esac
+    awg_first=${UDP_PORTS%%-*}
+    awg_last=${UDP_PORTS##*-}
+    [ -n "$awg_first" ] && [ -n "$awg_last" ] && [ "${#awg_first}" -le 5 ] && [ "${#awg_last}" -le 5 ] || die 'Invalid AmneziaWG UDP ports'
+    [ "$awg_first" -ge 1 ] && [ "$awg_last" -le 65535 ] && [ "$awg_first" -le "$awg_last" ] || die 'Invalid AmneziaWG UDP ports'
+    if [ "$TT_DATA_PORT" -ge "$awg_first" ] && [ "$TT_DATA_PORT" -le "$awg_last" ]; then
+        die 'TrustTunnel UDP port conflicts with AmneziaWG'
+    fi
+}
+# Explicit or saved overlap is rejected before any installation mutation.
+[ -n "$UDP_PORTS" ] || UDP_PORTS=$(previous AWG_UDP_PORTS)
+check_tt_awg_overlap
 
 # Standalone mode: the script alone is enough. Without a checkout next to it, the few files it needs are
 # fetched from GitHub (pinned by --ref) and the images come from GHCR, so nothing is built on the server.
@@ -78,6 +120,19 @@ if [ -z "$UDP_PORTS" ]; then
     [ -n "$UDP_PORTS" ] || UDP_PORTS=$(random_port)
 fi
 
+check_tt_awg_overlap
+if [ "$TT_ENABLED" = 1 ]; then
+    [ "$TT_DATA_PORT" != "${MANAGEMENT_PORT:-8443}" ] || die 'TrustTunnel data port conflicts with management'
+    # Read-only host inspection. Never stop another listener (for example stock Xray on 443).
+    for port in "$TT_DATA_PORT" "$TT_HTTP_PORT" "$TT_TLS_ALPN_PORT"; do
+        [ "$port" != 0 ] || continue
+        if command -v ss >/dev/null && [ -n "$(ss -Hlt "sport = :$port" 2>/dev/null)" ]; then
+            docker ps --filter label=com.docker.compose.project=awg-node --format '{{.Ports}}' |
+                grep -Eq ":$port->[0-9]+/tcp" || die "TCP $port is occupied. Choose another TrustTunnel data port; disable unavailable ACME ingress with --acme-tls-port 0 or --acme-http-port 0"
+        fi
+    done
+fi
+
 mkdir -p "$DIR/pki"
 chmod 700 "$DIR"
 # Traverse-only: the Agent (root without DAC override) must reach its key; the key itself stays 0600.
@@ -90,6 +145,24 @@ else
     cp "$SOURCE_DIR/deploy/production/node.compose.yaml" "$DIR/compose.yaml"
     BUILD_DIR=$SOURCE_DIR
 fi
+if [ "$TT_ENABLED" = 1 ]; then
+    if [ "$STANDALONE" = 1 ]; then
+        fetch deploy/production/node.trusttunnel.compose.yaml "$DIR/trusttunnel.compose.yaml"
+    else
+        cp "$SOURCE_DIR/deploy/production/node.trusttunnel.compose.yaml" "$DIR/trusttunnel.compose.yaml"
+    fi
+    # Port entries are generated from validated integers. Avoid publishing TCP443 when Xray owns it,
+    # and avoid duplicating TCP443 when it is also the TrustTunnel data port.
+    {
+        printf '    ports:\n'
+        printf "      - '%s:%s:%s/tcp'\n" "$UDP_BIND" "$TT_DATA_PORT" "$TT_DATA_PORT"
+        printf "      - '%s:%s:9443/udp'\n" "$UDP_BIND" "$TT_DATA_PORT"
+        [ "$TT_HTTP_PORT" = 0 ] || printf "      - '%s:80:80/tcp'\n" "$UDP_BIND"
+        if [ "$TT_TLS_ALPN_PORT" != 0 ] && [ "$TT_DATA_PORT" != 443 ]; then
+            printf "      - '%s:443:443/tcp'\n" "$UDP_BIND"
+        fi
+    } >> "$DIR/trusttunnel.compose.yaml"
+fi
 # Precedence: --management-port > the previous install (update) > the node key > 8443.
 [ -n "$MANAGEMENT_PORT" ] || MANAGEMENT_PORT=$(sed -n 's/^AWG_MANAGEMENT_PORT=//p' "$DIR/.env" 2>/dev/null | head -1)
 write_env() {
@@ -99,13 +172,23 @@ write_env() {
         echo "AWG_UDP_BIND=$UDP_BIND"
         echo "AWG_MANAGEMENT_PORT=${MANAGEMENT_PORT:-8443}"
         echo "AWG_MANAGEMENT_BIND=$MANAGEMENT_BIND"
+        echo "TT_ENABLED=$TT_ENABLED"
+        echo "TT_DATA_PORT=$TT_DATA_PORT"
+        echo "TT_HTTP_PORT=$TT_HTTP_PORT"
+        echo "TT_TLS_ALPN_PORT=$TT_TLS_ALPN_PORT"
         [ -z "${AWG_NODE_INTERNAL_NETWORK:-}" ] || echo "AWG_NODE_INTERNAL_NETWORK=$AWG_NODE_INTERNAL_NETWORK"
         [ -z "$REGISTRY" ] || echo "AWG_AGENT_IMAGE=$REGISTRY/agent:$IMAGE_TAG"
     } > "$DIR/.env"
     chmod 600 "$DIR/.env"
 }
 write_env
-dc() { docker compose -f "$DIR/compose.yaml" --env-file "$DIR/.env" "$@"; }
+dc() {
+    if [ "$TT_ENABLED" = 1 ]; then
+        docker compose -f "$DIR/compose.yaml" -f "$DIR/trusttunnel.compose.yaml" --env-file "$DIR/.env" "$@"
+    else
+        docker compose -f "$DIR/compose.yaml" --env-file "$DIR/.env" "$@"
+    fi
+}
 
 AGENT_IMAGE=awg-agent:local
 if [ -n "$REGISTRY" ]; then
@@ -138,6 +221,9 @@ else
 fi
 [ -n "$MANAGEMENT_PORT" ] || MANAGEMENT_PORT=$(sed -n 's/^AWG_NODE_MANAGEMENT_PORT=//p' "$DIR/pki/node.env" | head -1)
 MANAGEMENT_PORT=${MANAGEMENT_PORT:-8443}
+if [ "$TT_ENABLED" = 1 ]; then
+    [ "$TT_DATA_PORT" != "$MANAGEMENT_PORT" ] || die 'TrustTunnel data port conflicts with management'
+fi
 write_env
 say "Starting the Agent (node $NODE_ID)"
 dc up -d --pull missing --force-recreate
@@ -147,3 +233,7 @@ printf '  Docker-published ports bypass UFW. To allow management only from your 
 printf '    iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport %s --ctdir ORIGINAL ! -s <PANEL_IP> -j DROP\n' "$MANAGEMENT_PORT"
 printf '  or pass --management-bind <private IP>. Then press "Нода установлена — подключить" in the TUI.\n'
 printf '  The TUI fills this UDP port into new profiles of this node; to open more ports re-run with --udp-ports.\n'
+if [ "$TT_ENABLED" = 1 ]; then
+    printf '  TrustTunnel: TCP/UDP %s; ACME HTTP-01 %s, TLS-ALPN-01 %s (0 = disabled).\n' "$TT_DATA_PORT" "$TT_HTTP_PORT" "$TT_TLS_ALPN_PORT"
+    printf '  Create a TrustTunnel profile in the TUI with domain/email and apply it to issue the certificate.\n'
+fi

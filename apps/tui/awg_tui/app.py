@@ -20,6 +20,7 @@ from awg_config import random_parameters
 
 from .api import APIError, ControllerAPI
 from .pki import node_bundle
+from .trusttunnel import TrustTunnelExportScreen, TrustTunnelProfileScreen
 
 NUMERIC = {'Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'S3', 'S4'}
 STATES = {'DISABLED': 'отключён', 'LIMITED': 'лимит трафика', 'EXPIRED': 'истёк срок'}
@@ -379,7 +380,7 @@ class NodeKeyScreen(ModalScreen[None]):
 class AWGApp(App):
     TITLE = 'AmneziaWG · Remnawave extension'
     CSS = """
-    ProfileScreen, NodeKeyScreen { align: center middle; background: $background 60%; }
+    ProfileScreen, NodeKeyScreen, TrustTunnelProfileScreen, TrustTunnelExportScreen { align: center middle; background: $background 60%; }
     .dialog { width: 110; max-width: 96%; height: 94%; border: round $accent; background: $panel; }
     .dialog.narrow { width: 96; height: 32; max-height: 96%; }
     .dialog > .title { width: 1fr; padding: 1 2 0 2; text-style: bold; color: $accent; }
@@ -398,6 +399,7 @@ class AWGApp(App):
     #squads { height: auto; max-height: 8; }
     #parameters { height: 16; }
     #command { height: 8; }
+    #export-content { height: 18; }
     .hint { color: $warning; padding-left: 1; }
     #status { height: auto; min-height: 1; padding: 0 3; color: $text-muted; }
     .buttons { height: auto; align-horizontal: right; padding: 1 2; border-top: solid $primary 30%; }
@@ -407,12 +409,14 @@ class AWGApp(App):
     """
     BINDINGS = [Binding('r', 'refresh', 'Обновить'), Binding('n', 'new', 'Создать'), Binding('e', 'edit', 'Изменить'),
                 Binding('k', 'rotate', 'Сменить ключ'), Binding('s', 'reconcile', 'Синхронизировать'),
+                Binding('x', 'export_trusttunnel', 'TT экспорт'),
                 Binding('q', 'quit', 'Выход')]
 
     def __init__(self, api: ControllerAPI, refresh_seconds: float = 15):
         super().__init__()
         self.api, self.refresh_seconds = api, refresh_seconds
         self.data = {'nodes': [], 'profiles': [], 'peers': [], 'errors': []}
+        self.trusttunnel_data = {'profiles': [], 'status': [], 'peers': []}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -432,6 +436,13 @@ class AWGApp(App):
                 yield DataTable(id='peers-table', cursor_type='row')
             with TabPane('Ошибки', id='errors'):
                 yield DataTable(id='errors-table', cursor_type='row')
+            with TabPane('TrustTunnel', id='trusttunnel'):
+                yield Static('n — создать TT профиль, e — изменить. Ревизии: desired / applied.', classes='tab-hint')
+                yield Static('Откройте раздел для загрузки данных Controller.', id='trusttunnel-status', markup=False)
+                yield DataTable(id='trusttunnel-table', cursor_type='row')
+            with TabPane('TT пользователи', id='trusttunnel-peers'):
+                yield Static('k — сменить TT credentials, x — явный native export выбранного пользователя.', classes='tab-hint')
+                yield DataTable(id='trusttunnel-peers-table', cursor_type='row')
         yield Footer()
 
     def on_mount(self):
@@ -439,6 +450,9 @@ class AWGApp(App):
         self.query_one('#profiles-table', DataTable).add_columns('Профиль', 'AWG', 'Endpoint', 'Pool', 'Squads', 'Статус')
         self.query_one('#peers-table', DataTable).add_columns('Пользователь', 'Состояние', 'IP', 'Handshake', '↑ upload', '↓ download')
         self.query_one('#errors-table', DataTable).add_columns('Время', 'Код', 'Объект')
+        self.query_one('#trusttunnel-table', DataTable).add_columns('Профиль', 'Endpoint', 'Нода / Agent', 'Capabilities',
+            'Состояние / health', 'Desired / applied', 'Сертификат', 'Истекает', 'Повтор ACME', 'Ошибка')
+        self.query_one('#trusttunnel-peers-table', DataTable).add_columns('Пользователь UUID', 'Профиль', 'Нода', 'Состояние', 'Credential generation')
         self.load()
         self.set_interval(self.refresh_seconds, self.load)
 
@@ -454,6 +468,52 @@ class AWGApp(App):
             self.notify(str(error), title='Нет данных', severity='error')
             return
         self.render_all()
+        if self.active_tab() in ('trusttunnel', 'trusttunnel-peers'):
+            self.load_trusttunnel()
+
+    @on(TabbedContent.TabActivated, '#tabs')
+    def trusttunnel_tab(self, event):
+        if event.pane.id in ('trusttunnel', 'trusttunnel-peers'):
+            self.load_trusttunnel()
+
+    @work(exclusive=True, group='trusttunnel')
+    async def load_trusttunnel(self):
+        try:
+            data = {name: await self.api.items('trusttunnel/' + name) for name in self.trusttunnel_data}
+        except APIError as error:
+            self.trusttunnel_data = {'profiles': [], 'status': [], 'peers': []}
+            self.query_one('#trusttunnel-table', DataTable).clear()
+            self.query_one('#trusttunnel-peers-table', DataTable).clear()
+            self.query_one('#trusttunnel-status', Static).update('TrustTunnel: ' + str(error))
+            return
+        self.trusttunnel_data = data
+        self.query_one('#trusttunnel-status', Static).update('Save → Validate → Apply. READY требует healthy runtime и проверенный production сертификат.')
+        nodes = {n['registration']['node_id']: n for n in self.data['nodes']}
+        table = self.query_one('#trusttunnel-table', DataTable)
+        table.clear()
+        for item in data['profiles']:
+            p = item['draft']
+            deployment = next((d for d in data['status'] if d['profile_id'] == item['id']), {})
+            actual = deployment.get('actual') or {}
+            node_id = deployment.get('node_id') or next(iter(p.get('node_ids', [])), None)
+            node = nodes.get(node_id, {})
+            capabilities = (node.get('capabilities') or {}).get('protocols', [])
+            capability = next((cap for cap in capabilities if cap['adapter_id'] == 'trusttunnel'), None)
+            features = ('trusttunnel ' + ', '.join(capability.get('versions', [])) + ' · ' +
+                        ', '.join(capability.get('features', []))) if capability else 'TT не заявлен'
+            error = actual.get('certificate_error_code') or (actual.get('error') or {}).get('code') or '—'
+            table.add_row(p['name'], f'{p["endpoint"]["host"]}:{p["endpoint"]["port"]}',
+                (node.get('registration') or {}).get('name', str(node_id or '—')) + (' / online' if node.get('online') else ' / offline'),
+                features,
+                actual.get('state', 'DRAFT') + (' / healthy' if actual.get('healthy') else ' / unhealthy'),
+                f'{actual.get("desired_revision") or "—"} / {actual.get("applied_revision") or "—"}',
+                actual.get('certificate_state', 'ABSENT'), when(actual.get('not_after')), when(actual.get('next_attempt_at')),
+                error, key=item['id'])
+        table = self.query_one('#trusttunnel-peers-table', DataTable)
+        table.clear()
+        for peer in data['peers']:
+            table.add_row(peer['user_id'], peer['profile_id'], peer['node_id'], peer_state(peer),
+                          str(peer['credential_generation']), key=peer['id'])
 
     def render_all(self):
         nodes, profiles, peers = self.data['nodes'], self.data['profiles'], self.data['peers']
@@ -518,11 +578,21 @@ class AWGApp(App):
     async def action_new(self):
         if self.active_tab() == 'nodes':
             await self.push_screen(NodeKeyScreen(self.api), lambda _: self.load())
+        elif self.active_tab() in ('trusttunnel', 'trusttunnel-peers'):
+            self.query_one('#tabs', TabbedContent).active = 'trusttunnel'
+            await self.open_trusttunnel_profile(None)
         else:
             self.query_one('#tabs', TabbedContent).active = 'profiles'
             await self.open_profile(None)
 
     async def action_edit(self):
+        if self.active_tab() == 'trusttunnel':
+            table = self.query_one('#trusttunnel-table', DataTable)
+            if table.row_count:
+                key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+                item = next(i for i in self.trusttunnel_data['profiles'] if i['id'] == key)
+                await self.open_trusttunnel_profile(item['draft'])
+            return
         table = self.query_one('#profiles-table', DataTable)
         if self.active_tab() != 'profiles' or not table.row_count:
             return
@@ -531,6 +601,20 @@ class AWGApp(App):
         await self.open_profile(item['draft'])
 
     async def action_rotate(self):
+        if self.active_tab() == 'trusttunnel-peers':
+            table = self.query_one('#trusttunnel-peers-table', DataTable)
+            if not table.row_count:
+                return
+            key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+            peer = next(p for p in self.trusttunnel_data['peers'] if p['id'] == key)
+            try:
+                await self.api.rotate_trusttunnel_credentials(peer['user_id'])
+            except APIError as error:
+                self.notify(str(error), severity='error')
+                return
+            self.notify('TT credentials заменены: пользователь должен обновить подписку.', title='TrustTunnel')
+            self.load_trusttunnel()
+            return
         table = self.query_one('#peers-table', DataTable)
         if self.active_tab() != 'peers' or not table.row_count:
             return
@@ -554,3 +638,24 @@ class AWGApp(App):
 
     def action_refresh(self):
         self.load()
+
+    async def open_trusttunnel_profile(self, profile):
+        try:
+            squads = await self.api.squads()
+        except APIError as error:
+            self.notify('Squads Remnawave недоступны: ' + str(error), severity='error')
+            return
+        def done(applied):
+            if applied:
+                self.notify('Apply принят. Выдача сертификата может продолжаться; проверьте состояние TrustTunnel.')
+            self.load_trusttunnel()
+        await self.push_screen(TrustTunnelProfileScreen(self.api, self.data['nodes'], squads, profile), done)
+
+    async def action_export_trusttunnel(self):
+        if self.active_tab() != 'trusttunnel-peers':
+            return
+        table = self.query_one('#trusttunnel-peers-table', DataTable)
+        if not table.row_count:
+            return
+        peer_id = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+        await self.push_screen(TrustTunnelExportScreen(self.api, peer_id))

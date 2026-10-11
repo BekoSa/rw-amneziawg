@@ -224,3 +224,18 @@ changes входят в failure-injection acceptance.
 
 Cross-component изменение начинается с согласования contracts architect,
 затем consumers обновляются независимо. Shared lockfiles меняет только root.
+
+## TrustTunnel
+
+TrustTunnel добавляет отдельный протокол рядом с AWG: контракты находятся в
+`awg_contracts/trusttunnel.py`, Controller владеет encrypted `tt_*` данными и
+сериализует entitlement reconciliation. Нода владеет ACME account, сертификатами,
+TrustTunnel runtime и независимым журналом ревизий. Gateway и TUI обращаются к
+Controller API; stock Remnawave остаётся внешней зависимостью.
+
+HTTP-01 и TLS-ALPN-01 обслуживает HAProxy без TLS termination, выпуск и renewal —
+закреплённый lego. READY требует production certificate и реальный served TLS
+fingerprint. Отзыв credentials применяется при rollback; staging не публикуется
+в подписках. TT usage пока не включается в AWG traffic ledger.
+
+Порты, profile workflow, native export и ограничения: [TrustTunnel](trusttunnel.md).

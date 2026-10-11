@@ -9,7 +9,8 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
-from awg_contracts import AWGProfile, NodeRegistration, SubscriptionRequest
+from typing import Literal
+from awg_contracts import AWGProfile, NodeRegistration, SubscriptionRequest, TrustTunnelProfile, wire_payload
 from remnawave_client import RemnawaveClient, UpstreamError, verify_webhook
 from .config import Settings
 from .db import Database
@@ -20,6 +21,11 @@ from .service import Controller, rows
 class ApplyProfileRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     expected_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class TrustTunnelPeerExportRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid', hide_input_in_errors=True)
+    format: Literal['deeplink','toml']
 
 
 def create_app(controller=None):
@@ -212,6 +218,60 @@ def create_app(controller=None):
         for target, peer in zip(payload['peers'],material.peers):
             target['client_private_key'] = peer.client_private_key.get_secret_value()
         return JSONResponse(payload,headers={'Cache-Control':'no-store'})
+
+    @app.get('/api/v1/trusttunnel/profiles')
+    async def tt_profiles(s=Depends(admin)):
+        return await s.trusttunnel.profiles()
+
+    @app.put('/api/v1/trusttunnel/profiles/{profile_id}')
+    async def tt_save(profile_id:UUID, value:TrustTunnelProfile, s=Depends(admin)):
+        if value.profile_id != profile_id:
+            raise ValueError('Profile identity mismatch')
+        await s.trusttunnel.save_profile(value)
+        return {'saved':True}
+
+    @app.post('/api/v1/trusttunnel/profiles/{profile_id}/validate')
+    async def tt_validate(profile_id:UUID, s=Depends(admin)):
+        return await s.trusttunnel.validate_profile(profile_id)
+
+    @app.post('/api/v1/trusttunnel/profiles/{profile_id}/apply', status_code=202)
+    async def tt_apply(profile_id:UUID, value:ApplyProfileRequest, s=Depends(admin)):
+        await s.trusttunnel.apply_profile(profile_id, value.expected_digest)
+        return {'accepted':True}
+
+    @app.get('/api/v1/trusttunnel/status')
+    async def tt_status(s=Depends(admin)):
+        return await s.trusttunnel.status()
+
+    @app.get('/api/v1/trusttunnel/profiles/{profile_id}/state')
+    async def tt_profile_state(profile_id:UUID, s=Depends(admin)):
+        return await s.trusttunnel.status(profile_id)
+
+    @app.get('/api/v1/trusttunnel/peers')
+    async def tt_peers(s=Depends(admin)):
+        return await s.trusttunnel.peers()
+
+    @app.get('/api/v1/trusttunnel/profiles/{profile_id}/peers')
+    async def tt_profile_peers(profile_id:UUID, s=Depends(admin)):
+        return await s.trusttunnel.peers(profile_id)
+
+    @app.post('/api/v1/trusttunnel/users/{user_uuid}/credentials/rotate', status_code=202)
+    async def tt_rotate(user_uuid:UUID, s=Depends(admin)):
+        await s.trusttunnel.rotate_credentials(user_uuid)
+        return {'accepted':True}
+
+    @app.post('/api/v1/trusttunnel/peers/{peer_id}/export')
+    async def tt_export(peer_id:UUID, value:TrustTunnelPeerExportRequest, s=Depends(admin)):
+        exported = await s.trusttunnel.export_peer(peer_id, value.format)
+        return JSONResponse(wire_payload(exported), headers={'Cache-Control':'no-store'})
+
+    @app.post('/v1/internal/subscriptions/trusttunnel/material')
+    async def tt_material(value:SubscriptionRequest,
+            native_format:Literal['deeplink','toml','all']|None=None, s=Depends(gateway)):
+        material = await s.trusttunnel.material(value.subscription_token.get_secret_value(), native_format=native_format)
+        if material is None:
+            raise HTTPException(404,'Unknown subscription')
+        return JSONResponse(wire_payload(material), headers={'Cache-Control':'no-store'})
 
     @app.post('/webhooks/remnawave',status_code=202)
     async def webhook(request:Request,s=Depends(service),x_remnawave_signature:str=Header(default='')):

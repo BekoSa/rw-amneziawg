@@ -1,0 +1,10 @@
+FROM awg-tt-toolchain:local
+ENTRYPOINT []
+COPY requirements.txt requirements.lock /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements.txt -c /tmp/requirements.lock
+COPY packages/contracts /app/packages/contracts
+COPY packages/awg-config /app/packages/awg-config
+COPY apps/node-agent/awg_agent /app/awg_agent
+ENV PYTHONPATH=/app:/app/packages/contracts:/app/packages/awg-config PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+COPY deploy/dev/trusttunnel/server.py /opt/tt-lab/server.py
+COPY --from=awg-tt-pebble:local /test/certs/pebble.minica.pem /opt/tt-lab/pebble-ca.pem

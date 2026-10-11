@@ -46,7 +46,15 @@ restore_key() {  # restore_key FILE KEY STATE ORIGINAL_BASE64
 CHANGES="$DIR/stock-changes"
 if [ -s "$CHANGES" ]; then
     containers=''
-    while IFS="$(printf '\t')" read -r _id file key state original container; do
+    tab=$(printf '\t')
+    while IFS= read -r record; do
+        # IFS tab is whitespace: read collapses an empty original value and loses the container.
+        # Split explicitly so absent and present-but-empty settings both keep all six fields.
+        record=${record#*"$tab"}
+        file=${record%%"$tab"*}; record=${record#*"$tab"}
+        key=${record%%"$tab"*}; record=${record#*"$tab"}
+        state=${record%%"$tab"*}; record=${record#*"$tab"}
+        original=${record%%"$tab"*}; container=${record#*"$tab"}
         restore_key "$file" "$key" "$state" "$original"
         case " $containers " in *" $container "*) ;; *) containers="$containers $container" ;; esac
     done < "$CHANGES"

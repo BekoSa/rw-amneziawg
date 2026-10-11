@@ -27,7 +27,7 @@ jobs:
       - name: Compose network safety lint
         run: scripts/lab.sh lint
       - name: Shellcheck
-        run: docker run --rm -v "$PWD:/w:ro" koalaman/shellcheck:stable -S warning /w/install.sh /w/install-node.sh /w/uninstall.sh /w/scripts/lab.sh /w/scripts/test-installer.sh /w/scripts/update-amnezia.sh
+        run: docker run --rm -v "$PWD:/w:ro" koalaman/shellcheck:stable -S warning /w/install.sh /w/install-node.sh /w/uninstall.sh /w/scripts/lab.sh /w/scripts/trusttunnel-lab.sh /w/scripts/stock-http-smoke.sh /w/scripts/test-installer.sh /w/scripts/update-amnezia.sh
       - name: Unit, contract, golden, DB and TUI tests
         run: scripts/lab.sh test
       - name: Keep evidence
@@ -58,9 +58,36 @@ jobs:
           path: artifacts/run-*
           if-no-files-found: ignore
 
+
+  trusttunnel:
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated tooling and TrustTunnel runtime
+        run: |
+          scripts/lab.sh build
+          scripts/trusttunnel-lab.sh build
+      - name: TrustTunnel network safety lint
+        run: scripts/trusttunnel-lab.sh lint
+      - name: Real ACME and TrustTunnel connectivity
+        run: scripts/trusttunnel-lab.sh test
+      - name: Stock HTTP after extension removal and restoration
+        run: scripts/stock-http-smoke.sh
+      - name: Keep evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trusttunnel-evidence
+          path: |
+            artifacts/trusttunnel-run-*
+            artifacts/stock-http-run-*
+          if-no-files-found: ignore
+
   images:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, e2e]
+    needs: [test, e2e, trusttunnel]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:

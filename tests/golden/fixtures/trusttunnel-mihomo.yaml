@@ -1,0 +1,21 @@
+proxies:
+- name: stock
+  type: direct
+- name: 'Москва: "TT" #1'
+  type: trusttunnel
+  server: tt.example.com
+  port: 8443
+  username: alice
+  password: A"quoted\password:<>&xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  sni: tt.example.com
+  quic: false
+  udp: true
+  health-check: true
+proxy-groups:
+- name: select
+  type: select
+  proxies:
+  - stock
+  - 'Москва: "TT" #1'
+rules:
+- MATCH,select

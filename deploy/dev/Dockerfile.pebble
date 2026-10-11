@@ -1,0 +1,2 @@
+FROM ghcr.io/letsencrypt/pebble:2.8.0@sha256:d9080f68f6cb6af8d82134ab26de0aaaf312ac9cba42aecc6d3aede6cb63007b
+COPY deploy/dev/trusttunnel/pebble.json /test/tt-pebble.json

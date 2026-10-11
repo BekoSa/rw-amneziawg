@@ -1,0 +1,9 @@
+{
+  "endpoint": "203.0.113.10:14443",
+  "domain": "vpn.example.com",
+  "name": "Test TT",
+  "username": "opaque",
+  "password": "secretsecretsecretsecretsecretsecretsecretsecret",
+  "endpoint_version": "1.1.0",
+  "endpoint_archive_sha256": "91c2ea3db7416a01b5258a4c047ec22890490bc55e1b194206031aa75144f0e7"
+}

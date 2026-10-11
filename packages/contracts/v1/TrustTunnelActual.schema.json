@@ -1,0 +1,277 @@
+{
+  "$defs": {
+    "DeploymentState": {
+      "enum": [
+        "DRAFT",
+        "VALIDATED",
+        "APPLYING",
+        "READY",
+        "ROLLING_BACK",
+        "DEGRADED",
+        "ERROR"
+      ],
+      "title": "DeploymentState",
+      "type": "string"
+    },
+    "ValidationIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ValidationIssue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "api_version": {
+      "const": "trusttunnel.remnawave-extension.io/v1",
+      "default": "trusttunnel.remnawave-extension.io/v1",
+      "title": "Api Version",
+      "type": "string"
+    },
+    "protocol_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "deployment_id": {
+      "format": "uuid",
+      "title": "Deployment Id",
+      "type": "string"
+    },
+    "desired_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Desired Revision"
+    },
+    "validated_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Validated Revision"
+    },
+    "applied_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applied Revision"
+    },
+    "last_known_good_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Known Good Revision"
+    },
+    "applied_digest": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applied Digest"
+    },
+    "state": {
+      "$ref": "#/$defs/DeploymentState",
+      "default": "DRAFT"
+    },
+    "healthy": {
+      "default": false,
+      "title": "Healthy",
+      "type": "boolean"
+    },
+    "runtime_epoch": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Runtime Epoch"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ValidationIssue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "certificate_state": {
+      "default": "ABSENT",
+      "enum": [
+        "ABSENT",
+        "ISSUING",
+        "VALID",
+        "RENEWING",
+        "ERROR",
+        "EXPIRED"
+      ],
+      "title": "Certificate State",
+      "type": "string"
+    },
+    "certificate_generation": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Certificate Generation",
+      "type": "integer"
+    },
+    "certificate_environment": {
+      "anyOf": [
+        {
+          "enum": [
+            "production",
+            "staging"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Certificate Environment"
+    },
+    "not_after": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Not After"
+    },
+    "fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fingerprint"
+    },
+    "served_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Served Fingerprint"
+    },
+    "next_attempt_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Attempt At"
+    },
+    "certificate_error_code": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Certificate Error Code"
+    }
+  },
+  "required": [
+    "deployment_id"
+  ],
+  "title": "TrustTunnelActual",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

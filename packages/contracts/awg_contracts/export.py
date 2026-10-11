@@ -3,13 +3,14 @@ import json
 from pathlib import Path
 
 from .models import ALL_MODELS
+from .trusttunnel import TRUSTTUNNEL_MODELS
 
 
 def export(destination: Path | None = None):
     directory = destination or Path(__file__).resolve().parent.parent / 'v1'
     directory.mkdir(parents=True, exist_ok=True)
     components = {}
-    for model in ALL_MODELS:
+    for model in ALL_MODELS + TRUSTTUNNEL_MODELS:
         schema = model.model_json_schema()
         schema['$schema'] = 'https://json-schema.org/draft/2020-12/schema'
         (directory / f'{model.__name__}.schema.json').write_text(json.dumps(schema, indent=2) + '\n')
@@ -24,6 +25,11 @@ def export(destination: Path | None = None):
         ('/v1/deployments/{deployment_id}/state', 'get', None, 'ActualDeployment'),
         ('/v1/deployments/{deployment_id}/traffic', 'get', None, 'TrafficSnapshot'),
         ('/v1/internal/subscriptions/material', 'post', 'SubscriptionRequest', 'SubscriptionMaterial'),
+        ('/v1/trusttunnel/deployments/{deployment_id}/validate', 'post', 'TrustTunnelDesired', 'TrustTunnelValidationResult'),
+        ('/v1/trusttunnel/deployments/{deployment_id}/apply', 'put', 'TrustTunnelApplyRequest', 'TrustTunnelActual'),
+        ('/v1/trusttunnel/deployments/{deployment_id}/state', 'get', None, 'TrustTunnelActual'),
+        ('/v1/trusttunnel/deployments/{deployment_id}/export', 'post', 'TrustTunnelExportRequest', 'TrustTunnelExportResponse'),
+        ('/v1/internal/subscriptions/trusttunnel/material', 'post', 'SubscriptionRequest', 'TrustTunnelMaterial'),
     ]
     for path, method, request, response in operations:
         ref = lambda name: {'$ref': f'#/components/schemas/{name}'}

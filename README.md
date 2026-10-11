@@ -60,3 +60,8 @@ Client private keys зашифрованы в отдельной AWG PostgreSQL.
 Отключение gateway возвращает subscription traffic непосредственно stock Remnawave.
 Остановка extension не должна удалять AWG database и Agent keys: удаление volumes —
 отдельное явное действие, не часть обычного uninstall.
+
+## TrustTunnel и автоматические сертификаты
+
+Отдельные профили TrustTunnel, HTTP-01/TLS-ALPN-01 и автоматическое обновление
+сертификатов на ноде описаны в [инструкции TrustTunnel](docs/trusttunnel.md).

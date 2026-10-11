@@ -2,10 +2,11 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from awg_contracts import ApplyRequest, DesiredDeployment
+from awg_contracts import (ApplyRequest, DesiredDeployment, ProtocolCapability, TrustTunnelApplyRequest,
+                          TrustTunnelDesired, TrustTunnelExportRequest, wire_payload)
 
 
-def create_app(service):
+def create_app(service, trusttunnel=None):
     app = FastAPI(title='AWG Agent', version='1.0', docs_url=None, redoc_url=None)
 
     @app.exception_handler(RequestValidationError)
@@ -22,7 +23,12 @@ def create_app(service):
         if identifier != desired.deployment_id: raise HTTPException(409, 'Deployment identity mismatch')
 
     @app.get('/v1/capabilities')
-    def capabilities(): return service.capabilities()
+    def capabilities():
+        result = service.capabilities()
+        if trusttunnel is not None:
+            result.protocols.append(ProtocolCapability(adapter_id='trusttunnel', versions=['1.0'],
+                features=['http2', 'http3', 'acme-http01', 'acme-tls-alpn01']))
+        return result
 
     @app.post('/v1/deployments/{identifier}/validate')
     def validate(identifier: UUID, desired: DesiredDeployment):
@@ -48,6 +54,28 @@ def create_app(service):
         ids = [row[0] for row in service.db.execute('SELECT id FROM deployments')]
         states = [service.state(UUID(identifier)) for identifier in ids]
         ok = all(state.state == 'READY' for state in states)
+        if trusttunnel is not None:
+            ok = ok and all(trusttunnel.state(identifier).state == 'READY' for identifier in trusttunnel.identifiers())
         return JSONResponse(status_code=200 if ok else 503, content={'ready': ok})
+
+    if trusttunnel is not None:
+        @app.post('/v1/trusttunnel/deployments/{identifier}/validate')
+        def tt_validate(identifier: UUID, desired: TrustTunnelDesired):
+            match(identifier, desired)
+            return invoke(trusttunnel.validate, desired)
+
+        @app.put('/v1/trusttunnel/deployments/{identifier}/apply')
+        def tt_apply(identifier: UUID, request: TrustTunnelApplyRequest):
+            match(identifier, request.desired)
+            return invoke(trusttunnel.apply, request)
+
+        @app.get('/v1/trusttunnel/deployments/{identifier}/state')
+        def tt_state(identifier: UUID):
+            return invoke(trusttunnel.state, identifier)
+
+        @app.post('/v1/trusttunnel/deployments/{identifier}/export')
+        def tt_export(identifier: UUID, request: TrustTunnelExportRequest):
+            # Management transport mTLS authorization precedes this explicit secret reveal.
+            return wire_payload(invoke(trusttunnel.export, identifier, request.peer_id, request.format))
 
     return app

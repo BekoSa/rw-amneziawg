@@ -132,3 +132,8 @@ Remnawave продолжит работать как до установки. Н
 | `--ref`, `--image-tag` | как у `install.sh` |
 
 Сборка образов на своём сервере вместо GHCR: `git clone` проекта и запуск `sudo ./install.sh` из него.
+
+## TrustTunnel и автоматические сертификаты
+
+Отдельные профили TrustTunnel, HTTP-01/TLS-ALPN-01 и автоматическое обновление
+сертификатов на ноде описаны в [инструкции TrustTunnel](docs/trusttunnel.md).

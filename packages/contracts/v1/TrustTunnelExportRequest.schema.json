@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "peer_id": {
+      "format": "uuid",
+      "title": "Peer Id",
+      "type": "string"
+    },
+    "format": {
+      "enum": [
+        "deeplink",
+        "toml"
+      ],
+      "title": "Format",
+      "type": "string"
+    }
+  },
+  "required": [
+    "peer_id",
+    "format"
+  ],
+  "title": "TrustTunnelExportRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

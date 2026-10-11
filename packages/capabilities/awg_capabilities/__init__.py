@@ -80,3 +80,15 @@ def identify(user_agent: str) -> ClientCapability:
     if _MIHOMO.search(agent):
         return FAMILIES['mihomo']
     return FAMILIES['generic']
+
+
+def trusttunnel_supported(user_agent: str) -> bool:
+    """TT requires a known core; app and generic protocol names are insufficient.
+
+    Evidence: MetaCubeX/mihomo v1.19.32 adapter/outbound/trusttunnel.go.
+    Native exports are explicit authenticated downloads, never inferred from UA.
+    """
+    core = mihomo_core(user_agent)
+    verified = re.fullmatch(r'(?:clash\.meta|mihomo)/v?\d+\.\d+\.\d+(?:\s+.*)?',
+                            user_agent.strip(), re.IGNORECASE)
+    return verified is not None and core is not None and core >= (1, 19, 32)

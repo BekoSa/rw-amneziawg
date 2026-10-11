@@ -96,3 +96,7 @@ peers, отозванных после last-known-good revision.
 ошибке validation или неподдерживаемой версии клиента. При outage Controller gateway
 сохраняет stock response. При outage Remnawave Controller сохраняет последний достоверный
 state и не трактует timeout как удаление всех пользователей.
+
+Проверка ACME, TrustTunnel connectivity и эксплуатация сертификатов описаны в
+[TrustTunnel](trusttunnel.md). Реальные network результаты фиксируются отдельно от
+unit/contract tests; TT lab не требует TUN.

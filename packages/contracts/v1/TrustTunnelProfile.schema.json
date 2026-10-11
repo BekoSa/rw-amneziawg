@@ -1,0 +1,144 @@
+{
+  "$defs": {
+    "AccessSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "squad_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Squad Ids",
+          "type": "array"
+        },
+        "user_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "User Ids",
+          "type": "array"
+        }
+      },
+      "title": "AccessSpec",
+      "type": "object"
+    },
+    "TrustTunnelEndpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "maxLength": 253,
+          "minLength": 1,
+          "title": "Host",
+          "type": "string"
+        },
+        "port": {
+          "default": 443,
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "host"
+      ],
+      "title": "TrustTunnelEndpoint",
+      "type": "object"
+    },
+    "TrustTunnelTLS": {
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "maxLength": 253,
+          "minLength": 1,
+          "title": "Domain",
+          "type": "string"
+        },
+        "email": {
+          "maxLength": 254,
+          "minLength": 3,
+          "title": "Email",
+          "type": "string"
+        },
+        "environment": {
+          "default": "production",
+          "enum": [
+            "production",
+            "staging"
+          ],
+          "title": "Environment",
+          "type": "string"
+        },
+        "challenge": {
+          "default": "auto",
+          "enum": [
+            "http-01",
+            "tls-alpn-01",
+            "auto"
+          ],
+          "title": "Challenge",
+          "type": "string"
+        }
+      },
+      "required": [
+        "domain",
+        "email"
+      ],
+      "title": "TrustTunnelTLS",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "api_version": {
+      "const": "trusttunnel.remnawave-extension.io/v1",
+      "default": "trusttunnel.remnawave-extension.io/v1",
+      "title": "Api Version",
+      "type": "string"
+    },
+    "profile_id": {
+      "format": "uuid",
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "name": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "endpoint": {
+      "$ref": "#/$defs/TrustTunnelEndpoint"
+    },
+    "access": {
+      "$ref": "#/$defs/AccessSpec"
+    },
+    "node_ids": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "maxItems": 1,
+      "title": "Node Ids",
+      "type": "array"
+    },
+    "tls": {
+      "$ref": "#/$defs/TrustTunnelTLS"
+    }
+  },
+  "required": [
+    "profile_id",
+    "name",
+    "endpoint",
+    "tls"
+  ],
+  "title": "TrustTunnelProfile",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

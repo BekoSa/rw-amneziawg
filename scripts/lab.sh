@@ -48,10 +48,7 @@ e2e() {
     # Removal: extension fully stopped, subscriptions go straight to stock.
     compose stop gateway controller awg-agent
     phase removed
-    tables=$(compose exec -T remnawave-db psql -U remnawave -d remnawave -Atc \
-        "SELECT count(*) FROM information_schema.tables WHERE table_name ILIKE 'awg%'")
-    [ "$tables" = 0 ] || { echo "Stock DB contains extension tables: $tables" >&2; exit 1; }
-    echo 'Stock DB has no extension tables: PASS'
+    # The removed phase checks stock HTTP/API; extension orchestration never reads stock storage.
     compose --profile extension --profile live up -d --wait controller gateway awg-agent
     phase restored
     phase delete

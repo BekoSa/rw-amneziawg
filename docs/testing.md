@@ -82,3 +82,7 @@ Happ, `uninstall.sh` и проверка, что subscription-page работа�
   поднимается эталонным `amneziawg-go` + `awg setconf` из параметров Mihomo-записи.
 - Upgrade matrix: проверен только stock 3.4.4; предыдущая версия — контрактными фикстурами.
 - Firewall хоста не сертифицируется (см. выше; в логе помечено `UNAVAILABLE`).
+
+Проверка ACME, TrustTunnel connectivity и эксплуатация сертификатов описаны в
+[TrustTunnel](trusttunnel.md). Реальные network результаты фиксируются отдельно от
+unit/contract tests; TT lab не требует TUN.

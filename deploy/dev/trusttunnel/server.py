@@ -123,7 +123,21 @@ def action(path, body):
     if path == '/diagnostic':
         return {'lego': lego_diagnostics}
     if path == '/health':
-        return {'alive': True}
+        # Listener startup does not imply that Pebble's management CA exists yet.
+        # Only connection/startup timeouts are expected not-ready conditions;
+        # Non-success HTTP responses must still fail the lab.
+        try:
+            response = httpx.get('https://pebble:15000/roots/0',
+                verify='/opt/tt-lab/pebble-ca.pem', trust_env=False, timeout=2)
+            response.raise_for_status()
+        except (httpx.ConnectError, httpx.TimeoutException) as error:
+            cause = error
+            while cause is not None:
+                if isinstance(cause, ssl.SSLError):
+                    raise
+                cause = cause.__cause__
+            return {'alive': True, 'ca_ready': False}
+        return {'alive': True, 'ca_ready': True}
     if path == '/solver-start':
         desired = TrustTunnelDesired.model_validate(service._load(UUID(body['id']))['desired'])
         bundle = service.certificates.current(desired.profile.tls)

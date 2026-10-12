@@ -23,10 +23,13 @@ def wait_service():
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         try:
-            return call(SERVER, '/health', timeout=2)
+            status = call(SERVER, '/health', timeout=3)
+            if status.get('ca_ready') is True:
+                return status
         except httpx.HTTPError:
-            time.sleep(.25)
-    raise AssertionError('TT lab server did not start')
+            pass
+        time.sleep(.25)
+    raise AssertionError('TT lab server or Pebble CA did not become ready')
 
 
 def desired(method='http-01', domain='vpn.tt.test'):

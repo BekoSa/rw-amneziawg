@@ -154,6 +154,12 @@ else : > "$temporary/env"; fi
     printf 'NODE_MANAGED=1\nNODE_BRIDGE_NETWORK=%s\nNODE_BACKEND_IP=%s\n' "$NETWORK" "$backend"
 } >> "$temporary/env"
 changed=1
+# A retry may recover committed ingress bindings. Release this project's legacy
+# Docker port publications before ingress restores those sockets; other services
+# on the server are never stopped. The EXIT trap restarts the old plan on failure.
+if [ -f "$DIR/compose.yaml" ] && [ -f "$DIR/.env" ]; then
+    old_dc stop awg-agent
+fi
 # Each visible file replacement is atomic; the backup covers failures between them.
 cp "$temporary/compose.yaml" "$DIR/.managed-compose-$$"
 cp "$temporary/env" "$DIR/.managed-env-$$"

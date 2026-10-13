@@ -9,8 +9,11 @@ host не запускался. Stock Remnawave backend/Node/Xray/DB не изм
   deselected. Ownership/enrollment отдельно с минимальными необходимыми
   capabilities: 18 passed.
 - Agent/contract suite: 161 passed, 3 ownership skipped; Controller: 57 passed.
-- Installer/provisioning: 15 passed. Проверены rollback, PKI/identity preservation,
+- Installer/provisioning: 16 passed. Проверены rollback, PKI/identity preservation,
   immutable envelope/secret/subnet и отсутствие вытеснения чужого backend address.
+  Rollback использует сохранённые immutable image IDs. Повторная миграция сначала
+  освобождает Docker mappings собственного Agent для восстановления ingress journal;
+  ошибка остановки возвращает прежнюю конфигурацию и образы.
 - Go relay race tests: PASS. Проверены HMAC/replay, durable prepare/commit/recovery,
   UDP isolation, TCP half-close/idle и ACME443→TT443 socket retarget.
 - Managed bridge lab: 1 passed, 34.91 s. Реальные HTTP-01 и TLS-ALPN-01,

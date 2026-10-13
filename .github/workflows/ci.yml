@@ -27,7 +27,7 @@ jobs:
       - name: Compose network safety lint
         run: scripts/lab.sh lint
       - name: Shellcheck
-        run: docker run --rm -v "$PWD:/w:ro" koalaman/shellcheck:stable -S warning /w/install.sh /w/install-node.sh /w/uninstall.sh /w/scripts/lab.sh /w/scripts/trusttunnel-lab.sh /w/scripts/stock-http-smoke.sh /w/scripts/test-installer.sh /w/scripts/update-amnezia.sh
+        run: docker run --rm -v "$PWD:/w:ro" koalaman/shellcheck:stable -S warning /w/install.sh /w/install-node.sh /w/uninstall.sh /w/scripts/install-managed-node.sh /w/scripts/lab.sh /w/scripts/managed-node-lab.sh /w/scripts/managed-awg-lab.sh /w/scripts/trusttunnel-lab.sh /w/scripts/stock-http-smoke.sh /w/scripts/test-installer.sh /w/scripts/update-amnezia.sh
       - name: Unit, contract, golden, DB and TUI tests
         run: scripts/lab.sh test
       - name: Keep evidence
@@ -85,9 +85,51 @@ jobs:
             artifacts/stock-http-run-*
           if-no-files-found: ignore
 
+  managed-node:
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated managed node lab
+        run: |
+          scripts/lab.sh build
+          scripts/managed-node-lab.sh build
+      - name: Ingress unit tests
+        run: docker build --target test -f apps/node-ingress/Dockerfile .
+      - name: Managed node network safety lint
+        run: scripts/managed-node-lab.sh lint
+      - name: Managed ports, ACME, connectivity and revocation
+        run: scripts/managed-node-lab.sh test
+      - name: Keep evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: managed-node-evidence
+          path: artifacts/managed-node-run-*
+          if-no-files-found: ignore
+
+  managed-awg:
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build managed AWG isolated lab
+        run: scripts/managed-awg-lab.sh build
+      - name: Real AWG through managed UDP ingress and stock removal/restoration
+        run: scripts/managed-awg-lab.sh e2e
+      - name: Keep evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: managed-awg-evidence
+          path: artifacts/managed-awg-run-*
+          if-no-files-found: ignore
+
   images:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, e2e, trusttunnel]
+    needs: [test, e2e, trusttunnel, managed-node, managed-awg]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -101,6 +143,8 @@ jobs:
             dockerfile: Dockerfile
           - name: agent
             dockerfile: apps/node-agent/Dockerfile
+          - name: ingress
+            dockerfile: apps/node-ingress/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - name: Image name (GHCR requires lower case)

@@ -1,4 +1,5 @@
 """Version 1 wire contracts. No service or persistence dependencies."""
 from .models import *
 from .trusttunnel import *
+from .managed_node import *
 

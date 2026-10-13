@@ -67,8 +67,11 @@ def validate_ports(data, http, alpn):
         raise ValueError('ACME public ports must be 80/443 or disabled')
 
 
-def ingress_config(data, http, alpn):
-    validate_ports(data, http, alpn)
+def ingress_config(data, http, alpn, *, managed=False):
+    if managed:
+        if (data,http,alpn)!=(8444,8080,8444): raise ValueError('invalid managed frontend roles')
+    else:
+        validate_ports(data, http, alpn)
     binds = sorted({data} | ({alpn} if alpn else set()))
     config = ['global', '  maxconn 4096', '  tune.bufsize 65536',
               'defaults', '  mode tcp', '  timeout connect 5s', '  timeout client 1h',
@@ -113,16 +116,17 @@ def write_configuration(directory, desired, bundle, *, allow_private=False):
 
 
 class TrustTunnelRuntime:
-    def __init__(self, directory):
+    def __init__(self, directory, *, managed=False):
         if os.environ.get('TT_ISOLATED_RUNTIME') != '1' or not Path('/.dockerenv').exists():
             raise RuntimeError('TrustTunnel runtime requires an explicitly isolated Docker container')
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.directory.chmod(0o700)
-        self.data_port = int(os.environ.get('TT_DATA_PORT', '443'))
-        self.http_port = int(os.environ.get('TT_HTTP_PORT', '80'))
-        self.alpn_port = int(os.environ.get('TT_TLS_ALPN_PORT', '443'))
-        validate_ports(self.data_port, self.http_port, self.alpn_port)
+        self.managed = managed
+        self.data_port = 8444 if managed else int(os.environ.get('TT_DATA_PORT', '443'))
+        self.http_port = 8080 if managed else int(os.environ.get('TT_HTTP_PORT', '80'))
+        self.alpn_port = 8444 if managed else int(os.environ.get('TT_TLS_ALPN_PORT', '443'))
+        if not self.managed: validate_ports(self.data_port, self.http_port, self.alpn_port)
         self.allow_private = os.environ.get('TT_TEST_ALLOW_PRIVATE') == '1'
         self.test = os.environ.get('TT_ISOLATED_TEST') == '1'
         if self.allow_private and not self.test:
@@ -143,9 +147,9 @@ class TrustTunnelRuntime:
             raise RuntimeError('pinned TrustTunnel toolchain is unavailable') from None
 
     def validate(self, desired):
-        if desired.profile.endpoint.port != self.data_port:
+        if not self.managed and desired.profile.endpoint.port != self.data_port:
             raise ValueError('TrustTunnel endpoint port differs from installed public data port')
-        validate_ports(desired.profile.endpoint.port, self.http_port, self.alpn_port)
+        if not self.managed: validate_ports(desired.profile.endpoint.port, self.http_port, self.alpn_port)
 
     @staticmethod
     def _terminate(process):
@@ -171,7 +175,7 @@ class TrustTunnelRuntime:
             if self.ingress is not None and self.ingress.poll() is None:
                 return
             path = self.directory / 'haproxy.cfg'
-            atomic_write(path, ingress_config(self.data_port, self.http_port, self.alpn_port))
+            atomic_write(path, ingress_config(self.data_port, self.http_port, self.alpn_port, managed=self.managed))
             try:
                 subprocess.run(['haproxy', '-c', '-f', str(path)], check=True,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)

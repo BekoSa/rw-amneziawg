@@ -1,0 +1,133 @@
+{
+  "$defs": {
+    "IngressBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "format": "uuid",
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "deployment_id": {
+          "format": "uuid",
+          "title": "Deployment Id",
+          "type": "string"
+        },
+        "transport": {
+          "enum": [
+            "tcp",
+            "udp"
+          ],
+          "title": "Transport",
+          "type": "string"
+        },
+        "public_address": {
+          "default": "0.0.0.0",
+          "title": "Public Address",
+          "type": "string"
+        },
+        "public_port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Public Port",
+          "type": "integer"
+        },
+        "backend_role": {
+          "enum": [
+            "awg",
+            "trusttunnel",
+            "acme-http",
+            "acme-tls-alpn"
+          ],
+          "title": "Backend Role",
+          "type": "string"
+        },
+        "backend_port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Backend Port",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "binding_id",
+        "deployment_id",
+        "transport",
+        "public_port",
+        "backend_role",
+        "backend_port"
+      ],
+      "title": "IngressBinding",
+      "type": "object"
+    },
+    "ValidationIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "ValidationIssue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "binding": {
+      "$ref": "#/$defs/IngressBinding"
+    },
+    "state": {
+      "enum": [
+        "PREPARED",
+        "ACTIVE",
+        "ERROR"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "backend_ready": {
+      "default": false,
+      "title": "Backend Ready",
+      "type": "boolean"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ValidationIssue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "binding",
+    "state"
+  ],
+  "title": "NodeBindingActual",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

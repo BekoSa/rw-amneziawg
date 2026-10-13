@@ -11,13 +11,14 @@ SECRET_FILE=''
 REENROLL=0
 UDP_PORTS=''
 MANAGEMENT_PORT=''  # default: the port chosen in the TUI (carried by the node key), else 8443
-MANAGEMENT_BIND=0.0.0.0
+MANAGEMENT_BIND=''
 REGISTRY=''
 REF=main
 NO_PULL=0
 DEFAULT_REGISTRY=ghcr.io/bekosa/rw-amneziawg
 IMAGE_TAG=latest
-UDP_BIND=0.0.0.0
+UDP_BIND=''
+MANAGED=1
 TT_ENABLED=''
 TT_DATA_PORT=''
 TT_HTTP_PORT=''
@@ -25,6 +26,8 @@ TT_TLS_ALPN_PORT=''
 
 while [ $# -gt 0 ]; do
     case $1 in
+        --managed) MANAGED=1; shift ;;
+        --legacy) MANAGED=0; shift ;;
         --secret-file) SECRET_FILE=$2; shift 2 ;;
         --reenroll) REENROLL=1; shift ;;       # replace the node key (e.g. panel reinstalled); keeps ports
         --dir) DIR=$2; shift 2 ;;
@@ -40,7 +43,7 @@ while [ $# -gt 0 ]; do
         --trusttunnel-port) TT_DATA_PORT=$2; shift 2 ;;
         --acme-http-port) TT_HTTP_PORT=$2; shift 2 ;;       # 80 or 0 (disabled)
         --acme-tls-port) TT_TLS_ALPN_PORT=$2; shift 2 ;;    # 443 or 0 (occupied by another service)
-        *) echo 'Usage: sudo ./install-node.sh [--secret-file FILE] [--udp-ports PORT|FROM-TO] [--management-port 8443] [--management-bind IP]'; exit 2 ;;
+        *) echo 'Usage: sudo ./install-node.sh [--managed|--legacy] [--secret-file FILE] [--udp-ports PORT|FROM-TO] [--management-port 8443] [--management-bind IP]'; exit 2 ;;
     esac
 done
 
@@ -48,6 +51,10 @@ say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
 
 previous() { sed -n "s/^$1=//p" "$DIR/.env" 2>/dev/null | head -1; }
+MANAGEMENT_BIND=${MANAGEMENT_BIND:-$(previous AWG_MANAGEMENT_BIND)}
+MANAGEMENT_BIND=${MANAGEMENT_BIND:-0.0.0.0}
+UDP_BIND=${UDP_BIND:-$(previous AWG_UDP_BIND)}
+UDP_BIND=${UDP_BIND:-0.0.0.0}
 TT_ENABLED=${TT_ENABLED:-$(previous TT_ENABLED)}
 TT_ENABLED=${TT_ENABLED:-0}
 TT_DATA_PORT=${TT_DATA_PORT:-$(previous TT_DATA_PORT)}
@@ -79,7 +86,7 @@ check_tt_awg_overlap() {
 }
 # Explicit or saved overlap is rejected before any installation mutation.
 [ -n "$UDP_PORTS" ] || UDP_PORTS=$(previous AWG_UDP_PORTS)
-check_tt_awg_overlap
+[ "$MANAGED" = 1 ] || check_tt_awg_overlap
 
 # Standalone mode: the script alone is enough. Without a checkout next to it, the few files it needs are
 # fetched from GitHub (pinned by --ref) and the images come from GHCR, so nothing is built on the server.
@@ -118,6 +125,22 @@ if [ -z "$UDP_PORTS" ]; then
     # Re-runs (updates) keep the published port, so existing profiles and client configs keep working.
     UDP_PORTS=$(sed -n 's/^AWG_UDP_PORTS=//p' "$DIR/.env" 2>/dev/null | head -1)
     [ -n "$UDP_PORTS" ] || UDP_PORTS=$(random_port)
+fi
+
+if [ "$MANAGED" = 1 ]; then
+    export AWG_INSTALL_DIR="$DIR" AWG_INSTALL_SOURCE="$SOURCE_DIR" AWG_INSTALL_RAW_BASE="$RAW_BASE"
+    export AWG_INSTALL_REGISTRY="$REGISTRY" AWG_INSTALL_IMAGE_TAG="$IMAGE_TAG" AWG_INSTALL_NO_PULL="$NO_PULL"
+    export AWG_INSTALL_SECRET_FILE="$SECRET_FILE" AWG_INSTALL_REENROLL="$REENROLL"
+    export AWG_INSTALL_MANAGEMENT_PORT="$MANAGEMENT_PORT" AWG_INSTALL_MANAGEMENT_BIND="$MANAGEMENT_BIND"
+    export AWG_INSTALL_UDP_BIND="$UDP_BIND"
+    if [ -f "$SOURCE_DIR/scripts/install-managed-node.sh" ]; then
+        exec sh "$SOURCE_DIR/scripts/install-managed-node.sh"
+    fi
+    managed_helper=$(mktemp)
+    trap 'rm -f "$managed_helper"' EXIT INT TERM
+    fetch scripts/install-managed-node.sh "$managed_helper"
+    sh "$managed_helper"
+    exit $?
 fi
 
 check_tt_awg_overlap

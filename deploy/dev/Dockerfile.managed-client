@@ -1,0 +1,2 @@
+FROM awg-tt-client:local
+COPY deploy/dev/trusttunnel/managed_client.py /opt/tt-lab/managed_client.py

@@ -1,5 +1,6 @@
 """Exact TT rendering and forwarding of pinned endpoint exporter fixtures."""
 import json
+import base64
 from pathlib import Path
 
 import pytest
@@ -60,3 +61,34 @@ def test_native_exports_are_opaque_verbatim_not_generated(tt_entry):
     tt_entry.native_deeplink = None
     with pytest.raises(ValueError):
         native(tt_entry, 'deeplink')
+
+
+@pytest.mark.parametrize('encoded', [False, True])
+@pytest.mark.parametrize('newline', [b'\n', b'\r\n'])
+def test_throne_native_link_preserves_stock_and_awg(tt_entry, encoded, newline):
+    from subscription_renderers.trusttunnel import enrich
+    plain = newline.join([b'vless://stock#Original', b'wg://existing?enable_amnezia=true']) + newline
+    stock = base64.b64encode(plain) if encoded else plain
+    result = enrich(stock, [tt_entry], 'Throne/1.3.2')
+    expected = plain + tt_entry.native_deeplink.get_secret_value().encode() + newline
+    assert result == (base64.b64encode(expected) if encoded else expected)
+
+
+@pytest.mark.parametrize('ua', ['Throne/1.2.4', 'Throne/1.3.0-beta.4', 'Throne/1.3', 'Throne/1.3.2evil', 'Custom/1.3.2'])
+def test_throne_unverified_versions_preserve_uri_bytes(tt_entry, ua):
+    from subscription_renderers.trusttunnel import enrich
+    stock = b'vless://stock\r\n'
+    assert enrich(stock, [tt_entry], ua) == stock
+
+
+def test_throne_missing_native_export_preserves_stock(tt_entry):
+    from subscription_renderers.trusttunnel import enrich
+    tt_entry.native_deeplink = None
+    stock = b'vless://stock\n'
+    assert enrich(stock, [tt_entry], 'Throne/1.3.2') == stock
+
+
+def test_throne_existing_tt_scheme_does_not_block_other_native_entries(tt_entry):
+    from subscription_renderers.trusttunnel import enrich
+    stock = b'vless://stock\ntt://existing:secret@other.example:443\n'
+    assert enrich(stock, [tt_entry], 'Throne/1.3.0') == stock + tt_entry.native_deeplink.get_secret_value().encode() + b'\n'

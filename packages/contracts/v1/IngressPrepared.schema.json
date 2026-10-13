@@ -1,0 +1,28 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "ticket_id": {
+      "format": "uuid",
+      "title": "Ticket Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "digest": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ticket_id",
+    "revision",
+    "digest"
+  ],
+  "title": "IngressPrepared",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -1,0 +1,65 @@
+# Managed production node. Only the ingress owns host sockets; AWG stays in its bridge.
+name: awg-node
+services:
+  node-ingress:
+    image: ${AWG_INGRESS_IMAGE:-awg-ingress:local}
+    build: {context: '${AWG_SOURCE_DIR:?run install-node.sh}', dockerfile: apps/node-ingress/Dockerfile}
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    environment:
+      INGRESS_ENVELOPE_FILE: /node-config/envelope.json
+      INGRESS_SECRET_FILE: /node-config/ingress.secret
+      INGRESS_STATE_DIR: /var/lib/node-ingress
+      INGRESS_SOCKET: /run/node/ingress.sock
+    volumes: ['./node-config:/node-config:ro', 'node-control:/run/node', 'ingress-state:/var/lib/node-ingress']
+    healthcheck:
+      test: [CMD, /node-ingress, --healthcheck]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  awg-agent:
+    image: ${AWG_AGENT_IMAGE:-awg-agent:local}
+    build: {context: '${AWG_SOURCE_DIR:?run install-node.sh}', dockerfile: apps/node-agent/Dockerfile}
+    restart: unless-stopped
+    depends_on: {node-ingress: {condition: service_healthy}}
+    env_file: [./pki/node.env]
+    environment:
+      AWG_ISOLATED_RUNTIME: '1'
+      TT_ISOLATED_RUNTIME: '1'
+      AWG_STATE_DIR: /var/lib/awg-agent
+      AWG_TLS_CA: /pki/ca.crt
+      AWG_TLS_CERT: /pki/agent.crt
+      AWG_TLS_KEY: /pki/agent.key
+      AWG_EGRESS_DENY: ${AWG_EGRESS_DENY:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,169.254.0.0/16}
+      NODE_INSTALL_ENVELOPE: /node-config/envelope.json
+      NODE_INGRESS_SOCKET: /run/node/ingress.sock
+      NODE_INGRESS_SECRET: /node-config/ingress.secret
+      # Retained only for migration of a previously applied legacy TT profile.
+      TT_HTTP_PORT: ${TT_HTTP_PORT:-80}
+      TT_TLS_ALPN_PORT: ${TT_TLS_ALPN_PORT:-443}
+    volumes: ['agent-state:/var/lib/awg-agent', './pki:/pki:ro', './node-config:/node-config:ro', 'node-control:/run/node']
+    tmpfs: [/tmp, /run/amneziawg]
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    security_opt: [no-new-privileges:true]
+    devices: [/dev/net/tun:/dev/net/tun]
+    sysctls: {net.ipv4.ip_forward: '1'}
+    ports: ['${AWG_MANAGEMENT_BIND:-0.0.0.0}:${AWG_MANAGEMENT_PORT:-8443}:8443/tcp']
+    networks:
+      awg: {ipv4_address: '${NODE_BACKEND_IP:?run install-node.sh}'}
+    healthcheck:
+      test: [CMD, python, -c, 'import socket; socket.create_connection(("127.0.0.1",8443),2).close()']
+      interval: 3s
+      timeout: 3s
+      retries: 40
+networks:
+  awg: {external: true, name: '${NODE_BRIDGE_NETWORK:-awg-node_awg}'}
+volumes:
+  agent-state:
+  ingress-state:
+  node-control:

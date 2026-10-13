@@ -1,0 +1,149 @@
+{
+  "$defs": {
+    "NodeInstallEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "envelope_id": {
+          "format": "uuid",
+          "title": "Envelope Id",
+          "type": "string"
+        },
+        "node_id": {
+          "format": "uuid",
+          "title": "Node Id",
+          "type": "string"
+        },
+        "backend_ipv4": {
+          "title": "Backend Ipv4",
+          "type": "string"
+        },
+        "bind_addresses": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Bind Addresses",
+          "type": "array"
+        },
+        "reserved_ports": {
+          "items": {
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "maxItems": 128,
+          "title": "Reserved Ports",
+          "type": "array"
+        },
+        "max_bindings": {
+          "default": 128,
+          "maximum": 1024,
+          "minimum": 1,
+          "title": "Max Bindings",
+          "type": "integer"
+        },
+        "max_udp_flows": {
+          "default": 4096,
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Udp Flows",
+          "type": "integer"
+        },
+        "max_tcp_connections": {
+          "default": 4096,
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Tcp Connections",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "envelope_id",
+        "node_id",
+        "backend_ipv4"
+      ],
+      "title": "NodeInstallEnvelope",
+      "type": "object"
+    },
+    "ProtocolCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "versions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Versions",
+          "type": "array"
+        },
+        "features": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Features",
+          "type": "array"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "versions"
+      ],
+      "title": "ProtocolCapability",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "api_version": {
+      "const": "node.remnawave-extension.io/v1",
+      "default": "node.remnawave-extension.io/v1",
+      "title": "Api Version",
+      "type": "string"
+    },
+    "protocol_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "node_id": {
+      "format": "uuid",
+      "title": "Node Id",
+      "type": "string"
+    },
+    "envelope": {
+      "$ref": "#/$defs/NodeInstallEnvelope"
+    },
+    "installed_protocols": {
+      "items": {
+        "$ref": "#/$defs/ProtocolCapability"
+      },
+      "title": "Installed Protocols",
+      "type": "array"
+    },
+    "supports_dynamic_ingress": {
+      "default": true,
+      "title": "Supports Dynamic Ingress",
+      "type": "boolean"
+    },
+    "ingress_protocol_versions": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "title": "Ingress Protocol Versions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "node_id",
+    "envelope"
+  ],
+  "title": "NodeCapabilities",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

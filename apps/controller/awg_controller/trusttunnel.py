@@ -16,6 +16,8 @@ from awg_contracts import (NodeRegistration, TrustTunnelProfile, TrustTunnelCred
 from remnawave_client import User
 from .agent_client import AgentError
 from .domain import KeyVault, eligible
+from .db import LOCK_ID
+from .managed_node import NODE_LOCK_ID
 
 TT_LOCK_ID = 472319814
 
@@ -34,6 +36,7 @@ class TrustTunnelController:
         self.vault = KeyVault(settings.encryption_key, getattr(settings, 'encryption_key_id', 'default'),
                              getattr(settings, 'previous_encryption_keys', None))
         self.wakeup = None
+        self.resources = None
 
     def _wake(self):
         if self.wakeup is not None:
@@ -84,6 +87,7 @@ class TrustTunnelController:
 
     async def validate_profile(self, profile_id):
         async with self.db.connect() as conn:
+            await conn.execute('SELECT pg_advisory_xact_lock(%s)', (LOCK_ID,))
             await conn.execute('SELECT pg_advisory_xact_lock(%s)', (TT_LOCK_ID,))
             record = await one(conn, 'SELECT draft FROM tt_profiles WHERE id=%s', (profile_id,))
             if not record:
@@ -104,6 +108,11 @@ class TrustTunnelController:
                 local = self._local_profile(profile, node)
                 desired = TrustTunnelDesired(deployment_id=deployment['id'], node_id=node_id,
                     revision=deployment['next_revision'], profile=local, clients=clients if local.enabled else [])
+                if self.resources is not None:
+                    resources = await self.resources.validate_profile(conn, registration, desired)
+                    if resources is not None and not resources.valid:
+                        results.append(resources)
+                        continue
                 result = await self.agents.trusttunnel_validate(registration, desired)
                 if result.digest != trusttunnel_digest(desired) or result.revision != desired.revision:
                     raise AgentError('Validation identity mismatch')
@@ -116,11 +125,25 @@ class TrustTunnelController:
 
     async def apply_profile(self, profile_id, digest):
         async with self.db.connect() as conn:
+            await conn.execute('SELECT pg_advisory_xact_lock(%s)', (LOCK_ID,))
             await conn.execute('SELECT pg_advisory_xact_lock(%s)', (TT_LOCK_ID,))
+            await conn.execute('SELECT pg_advisory_xact_lock(%s)', (NODE_LOCK_ID,))
             record = await one(conn, 'SELECT * FROM tt_profiles WHERE id=%s', (profile_id,))
             if (not record or not record['validated_digest'] or digest != record['validated_digest'] or
                     digest != content_digest(record['draft'])):
                 raise ValueError('Profile must pass validation after the last edit')
+            if self.resources is not None:
+                profile = TrustTunnelProfile.model_validate(record['draft'])
+                for node_id in profile.node_ids:
+                    node = await one(conn, 'SELECT * FROM awg_nodes WHERE id=%s', (node_id,))
+                    if not node:
+                        raise ValueError('Unknown node')
+                    deployment = await self._deployment(conn, profile_id, node_id)
+                    candidate = TrustTunnelDesired(deployment_id=deployment['id'],node_id=node_id,
+                        revision=deployment['next_revision'],profile=self._local_profile(profile,node))
+                    result = await self.resources.validate_profile(conn, NodeRegistration.model_validate(node['registration']),candidate)
+                    if result is not None and not result.valid:
+                        raise AgentError('Resource validation expired', result.issues[0].code if result.issues else 'NODE_VALIDATION_FAILED')
             await conn.execute('UPDATE tt_profiles SET active=draft WHERE id=%s', (profile_id,))
         self._wake()
 
@@ -159,6 +182,8 @@ class TrustTunnelController:
     async def _desired(self, conn, profile, node, snapshot):
         deployment = await self._deployment(conn, profile.profile_id, node['id'])
         local = self._local_profile(profile, node)
+        if self.resources is not None and not await self.resources.protocol_enabled(conn,node['id'],'trusttunnel'):
+            local = local.model_copy(update={'enabled':False})
         accepted = set()
         clients = []
         for user_id, user in sorted(snapshot.items(), key=lambda pair:str(pair[0])):
@@ -246,6 +271,14 @@ class TrustTunnelController:
         registration = NodeRegistration.model_validate(deployment['registration'])
         try:
             desired = self._decrypt_desired(deployment)
+            if self.resources is not None:
+                try:
+                    await self.resources.ensure(conn, registration)
+                except AgentError as failure:
+                    # A disabled snapshot only removes access; ingress failure must
+                    # not block revocation. Enabled snapshots retain path authority.
+                    if desired.profile.enabled and (failure.reason not in {'PORT_IN_USE','INGRESS_UNAVAILABLE','BACKEND_NOT_READY'} or not await self.resources.existing_path(conn,desired,'trusttunnel')):
+                        raise
             await self._capabilities(registration)
             actual = await self.agents.trusttunnel_state(registration, deployment['id'])
             if actual.deployment_id != desired.deployment_id:
@@ -261,6 +294,8 @@ class TrustTunnelController:
                 actual = await self.agents.trusttunnel_apply(registration, desired, actual.applied_revision)
                 if actual.deployment_id != desired.deployment_id:
                     raise AgentError('Deployment identity mismatch')
+            if self.resources is not None:
+                await self.resources.refresh(conn, registration)
             await conn.execute('''UPDATE tt_deployments SET actual=%s,last_seen_at=now(),last_error_code=NULL
                 WHERE id=%s''', (Jsonb(actual.model_dump(mode='json')), deployment['id']))
             if actual.applied_revision == desired.revision and actual.applied_digest == deployment['desired_digest']:
@@ -340,6 +375,9 @@ class TrustTunnelController:
                 actual = TrustTunnelActual.model_validate(row['actual'])
                 active = TrustTunnelProfile.model_validate(row['active'])
                 registration = NodeRegistration.model_validate(row['registration'])
+                if self.resources is not None and not await self.resources.publishable(conn, desired.node_id,
+                        desired.deployment_id, active.endpoint.port, 'trusttunnel'):
+                    continue
                 if (not self._publishable(row, desired, actual, active, registration, datetime.now(timezone.utc)) or
                         not eligible(user, active.access.squad_ids, active.access.user_ids,
                                      int(stored['usage']), self.settings.quota_policy) or

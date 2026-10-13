@@ -40,7 +40,7 @@ def conf_value(field: str, value) -> str:
 def option_value(field: str, value):
     return str(value).lower() == 'true' if field in V3_BOOLS else value
 URI_SCHEMES = frozenset({'vless', 'vmess', 'trojan', 'ss', 'ssr', 'hysteria', 'hysteria2',
-                          'hy2', 'tuic', 'socks', 'socks5', 'http', 'https', 'wireguard', 'wg', 'amneziawg', 'awg'})
+                          'hy2', 'tuic', 'socks', 'socks5', 'http', 'https', 'wireguard', 'wg', 'amneziawg', 'awg', 'tt'})
 
 
 class Unsupported(ValueError):

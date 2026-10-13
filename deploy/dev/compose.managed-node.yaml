@@ -1,0 +1,81 @@
+name: awg-managed-lab
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  tmpfs: [/tmp:exec]
+services:
+  init:
+    <<: *hardened
+    image: awg-managed-init:local
+    command: [python, /opt/managed_init.py]
+    volumes: [control:/control]
+    networks: [management]
+  tooling:
+    <<: *hardened
+    image: awg-dev-tooling:local
+    working_dir: /workspace
+    volumes: [../..:/workspace:ro]
+    environment:
+      PYTHONPATH: /workspace:/workspace/packages/contracts:/workspace/packages/awg-config:/workspace/apps/node-agent
+      MANAGED_NODE_LAB: '1'
+    networks:
+      management: {ipv4_address: 10.242.22.4}
+      client-control: {ipv4_address: 10.242.23.2}
+  ingress:
+    <<: *hardened
+    image: awg-dev-ingress:local
+    depends_on: {init: {condition: service_completed_successfully}}
+    environment:
+      INGRESS_ENVELOPE_FILE: /control/envelope.json
+      INGRESS_SECRET_FILE: /control/ingress.secret
+      INGRESS_SOCKET: /control/ingress.sock
+      INGRESS_STATE_DIR: /state/${MANAGED_LAB_RUN:-manual}
+    volumes: [control:/control, ingress-state:/state]
+    networks:
+      underlay: {ipv4_address: 10.242.20.2, aliases: [vpn.tt.test, alpn.tt.test]}
+      backend: {ipv4_address: 10.242.21.2}
+  managed-agent:
+    <<: *hardened
+    image: awg-managed-agent:local
+    depends_on: {init: {condition: service_completed_successfully}}
+    command: [python, /opt/tt-lab/managed_server.py]
+    environment:
+      MANAGED_LAB_RUN: ${MANAGED_LAB_RUN:-manual}
+      TT_ENABLED: '1'
+      TT_ISOLATED_RUNTIME: '1'
+      TT_ISOLATED_TEST: '1'
+      TT_TEST_ACME_DIRECTORY: https://pebble:14000/dir
+      TT_TEST_ACME_CA: /opt/tt-lab/pebble-ca.pem
+    volumes: [control:/control, agent-state:/state]
+    networks:
+      backend: {ipv4_address: 10.242.21.3}
+      target: {ipv4_address: 192.0.0.10}
+      management: {ipv4_address: 10.242.22.3}
+  pebble:
+    <<: *hardened
+    image: awg-tt-pebble:local
+    command: [-config, /test/tt-pebble.json, '-strict=false']
+    environment: {PEBBLE_VA_NOSLEEP: '1', PEBBLE_VA_ALWAYS_VALID: '0', PEBBLE_AUTHZREUSE: '0', PEBBLE_WFE_NONCEREJECT: '0'}
+    networks:
+      underlay: {ipv4_address: 10.242.20.4}
+      management: {ipv4_address: 10.242.22.5}
+  managed-client:
+    <<: *hardened
+    image: awg-managed-client:local
+    command: [python, /opt/tt-lab/managed_client.py]
+    networks:
+      underlay: {ipv4_address: 10.242.20.3}
+      client-control: {ipv4_address: 10.242.23.3}
+  managed-target:
+    <<: *hardened
+    image: awg-tt-client:local
+    command: [python, /opt/tt-lab/target.py]
+    networks: {target: {ipv4_address: 192.0.0.9}}
+networks:
+  underlay: {driver: bridge, internal: true, ipam: {config: [{subnet: 10.242.20.0/24}]}}
+  backend: {driver: bridge, internal: true, ipam: {config: [{subnet: 10.242.21.0/24}]}}
+  management: {driver: bridge, internal: true, ipam: {config: [{subnet: 10.242.22.0/24}]}}
+  client-control: {driver: bridge, internal: true, ipam: {config: [{subnet: 10.242.23.0/24}]}}
+  target: {driver: bridge, internal: true, ipam: {config: [{subnet: 192.0.0.8/29, gateway: 192.0.0.14}]}}
+volumes: {control: {}, ingress-state: {}, agent-state: {}}

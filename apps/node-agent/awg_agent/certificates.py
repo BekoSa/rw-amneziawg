@@ -166,9 +166,12 @@ class CertificateManager:
 
     def methods(self, tls, previous=None):
         available = []
-        if int(os.environ.get('TT_HTTP_PORT', '80')) > 0:
+        provider = getattr(self, 'available_methods', None)
+        if provider is not None:
+            available = provider()
+        elif int(os.environ.get('TT_HTTP_PORT', '80')) > 0:
             available.append('http-01')
-        if int(os.environ.get('TT_TLS_ALPN_PORT', '443')) > 0:
+        if provider is None and int(os.environ.get('TT_TLS_ALPN_PORT', '443')) > 0:
             available.append('tls-alpn-01')
         if tls.challenge != 'auto':
             if tls.challenge not in available:

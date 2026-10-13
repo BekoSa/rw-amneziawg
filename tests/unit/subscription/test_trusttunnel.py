@@ -1,5 +1,6 @@
 """TrustTunnel delivery: verified core, stock access first, protected native exports."""
 import json
+import base64
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -51,6 +52,60 @@ async def test_verified_core_receives_tt_and_updated_validators(caplog):
     assert result.headers['subscription-userinfo'] == 'upload=3'
     assert 'etag' not in result.headers and result.headers['cache-control'] == 'private, no-store'
     assert PASSWORD not in caplog.text and NATIVE not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('encoded', [False, True])
+async def test_throne_ready_tt_fetches_native_and_keeps_awg(encoded):
+    stock = b'vless://stock\r\n'
+    def with_awg(req):
+        if '/trusttunnel/' in req.url.path:
+            assert req.url.params.get('native_format') == 'deeplink'
+            return controller(req)
+        return httpx.Response(200, json=material())
+    result = await request(lambda req: httpx.Response(200, content=base64.b64encode(stock) if encoded else stock),
+                           with_awg, headers={'user-agent': 'Throne/1.3.2'})
+    plain = base64.b64decode(result.content) if encoded else result.content
+    assert plain.startswith(stock)
+    assert b'wg://' in plain
+    assert plain.endswith(NATIVE.encode() + b'\r\n')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stock_headers,request_headers', [
+    ({'x-hwid-not-supported': '1'}, {}), ({'x-hwid-limit': '1'}, {}),
+    ({'cache-control': 'NO-TRANSFORM'}, {}), ({'content-encoding': 'custom'}, {}),
+    ({}, {'if-none-match': 'stock'}), ({}, {'range': 'bytes=0-9'}),
+])
+async def test_throne_stock_gates_prevent_tt_lookup(stock_headers, request_headers):
+    stock = b'vless://stock\r\n'
+    result = await request(lambda req: httpx.Response(200, content=stock, headers=stock_headers),
+        lambda req: pytest.fail('stock gate prevents credential lookup'),
+        headers={'user-agent': 'Throne/1.3.2', **request_headers})
+    assert result.content == stock
+
+
+@pytest.mark.asyncio
+async def test_throne_tt_outage_keeps_stock_and_existing_awg():
+    def broken(req):
+        if '/trusttunnel/' in req.url.path:
+            raise httpx.ConnectError('secret')
+        return httpx.Response(200, json=material())
+    result = await request(lambda req: httpx.Response(200, content=b'vless://stock\n'), broken,
+                           headers={'user-agent': 'Throne/1.3.2'})
+    assert result.content.startswith(b'vless://stock\nwg://')
+    assert b'tt://' not in result.content
+
+
+@pytest.mark.asyncio
+async def test_throne_user_agent_cannot_enable_mihomo_provider_tt():
+    def no_tt(req):
+        if '/trusttunnel/' in req.url.path:
+            pytest.fail('Throne cannot enable Mihomo provider credentials')
+        return controller(req)
+    result = await request(lambda req: httpx.Response(200, content=b'stock'), no_tt,
+        headers={'user-agent': 'Throne/1.3.2', 'x-awg-provider': 'mihomo'})
+    assert yaml.safe_load(result.content) == {'proxies': []}
 
 
 @pytest.mark.asyncio

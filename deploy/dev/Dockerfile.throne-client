@@ -1,0 +1,10 @@
+FROM awg-dev-tooling:local AS download
+RUN python -c 'import httpx,hashlib,zipfile,io; data=httpx.get("https://github.com/throneproj/Throne/releases/download/1.3.2/Throne-1.3.2-linux-amd64.zip",follow_redirects=True,timeout=180).raise_for_status().content; assert hashlib.sha256(data).hexdigest()=="e8af3be3e1bf54884539e4c631965af339acd703d8c69ea732575be9a71dd8a8"; zipfile.ZipFile(io.BytesIO(data)).extractall("/opt/throne")'
+FROM awg-dev-tooling:local
+# GUI automation and the bundled core run inside this image; no host X socket/TUN.
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb xdotool xclip libgl1 libegl1 libopengl0 libxkbcommon0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libfontconfig1 libdbus-1-3 libnss3 && rm -rf /var/lib/apt/lists/*
+COPY --from=download /opt/throne /opt/throne
+RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 libglib2.0-0t64 libxcb-shape0 && rm -rf /var/lib/apt/lists/*
+RUN find /opt/throne -type f -name 'Throne*' -exec chmod 755 {} +; find /opt/throne -type f -name '*core*' -exec chmod 755 {} +
+COPY deploy/dev/trusttunnel/throne_client.py /opt/tt-lab/throne_client.py
+CMD ["python", "/opt/tt-lab/throne_client.py"]

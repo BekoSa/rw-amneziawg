@@ -6,28 +6,42 @@ AmneziaWG. У него отдельные профили, ревизии и user
 
 ## Установка ноды
 
-На production VPS с существующим Docker и TUN установщик может включить оба runtime:
+На production VPS с существующим Docker и TUN установщик устанавливает оба runtime:
 
 ```sh
-./install-node.sh --trusttunnel --secret-file /path/to/node-key
+./install-node.sh --managed --secret-file /path/to/node-key
 ```
 
-По умолчанию TrustTunnel использует TCP/UDP443, HTTP-01 TCP80 и TLS-ALPN-01 TCP443.
-Установщик проверяет занятые TCP-порты и не останавливает чужой сервис.
-Если443 занимает Xray, оставьте его и используйте HTTP-01 с отдельным data port:
+Протоколы включаются в TUI: «Ноды» → выбрать ноду → `e`. Порты задаются в
+профилях AWG/TrustTunnel, затем «Проверить» и «Применить». Нода сама открывает
+свободные TCP/UDP sockets без пересоздания контейнеров. Если443 занимает Xray,
+задайте TrustTunnel data port2443 и HTTP-01; `auto` выбирает доступный ACME ingress.
+Занятый порт возвращает `PORT_IN_USE`, чужой сервис продолжает работать.
+
+Для уже установленной ноды достаточно один раз запустить свежий установщик
+`--managed`: он сохраняет identity, PKI и state volume; миграция кратковременно
+перезапускает ноду. Последующие обновления — `docker compose pull` и
+`docker compose up -d` из каталога установки.
+
+DNS должен указывать на ноду. Внешний и host firewall должны пропускать выбранные
+порты: нода управляет sockets, но не изменяет firewall провайдера или хоста.
+Production ingress слушает host sockets с NET_BIND_SERVICE; AWG runtime остаётся
+в Docker bridge. Development запускает только отдельные bridge labs.
+
+Старый режим с фиксированными Docker mappings доступен через `--legacy`:
 
 ```sh
-./install-node.sh --trusttunnel --trusttunnel-port 2443 --acme-tls-port 0 \
+./install-node.sh --legacy --trusttunnel --trusttunnel-port 2443 --acme-tls-port 0 \
   --secret-file /path/to/node-key
 ```
 
 Если80 недоступен, оставьте TLS-ALPN-01:
 
 ```sh
-./install-node.sh --trusttunnel --acme-http-port 0 --secret-file /path/to/node-key
+./install-node.sh --legacy --trusttunnel --acme-http-port 0 --secret-file /path/to/node-key
 ```
 
-Параметры включения и портов сохраняются при обновлении ноды. В каталоге установки
+В legacy режиме параметры включения и портов сохраняются при обновлении. В каталоге установки
 создаётся `trusttunnel.compose.yaml`: overlay содержит только валидированные mappings
 доступных портов. Обычный AWG install без opt-in не публикует новые порты.
 В production node overlay допустим минимальный NET_BIND_SERVICE для низких портов.
@@ -38,7 +52,7 @@ Development использует отдельный isolated Docker lab; product
 
 В TUI откройте TrustTunnel, создайте профиль и задайте:
 
-- публичный endpoint и data port, совпадающий с установленным;
+- публичный endpoint и свободный data port;
 - DNS domain сертификата и ACME contact email;
 - одну ноду, пользователей или Internal Squads;
 - `http-01`, `tls-alpn-01` или `auto`;
@@ -88,8 +102,10 @@ download metadata; отображение дополнительных кноп�
 нужно проверять для её конкретной версии.
 
 Mihomo TT output допускается для подтверждённого core>=1.19.32. Unknown embedded
-core и неподдерживаемые клиенты сохраняют stock/AWG поведение. Для Throne и INCY
-поддержка TrustTunnel не заявлена. Отзыв/expiry/выход из squad и отдельная rotation
+core и неподдерживаемые клиенты сохраняют stock/AWG поведение. Throne >=1.3.0
+получает native `tt://` в URI/Base64 подписке; импорт и TCP/UDP соединение проверены
+официальным Throne 1.3.2 в изолированном Docker lab. Для INCY поддержка TrustTunnel
+не заявлена. Отзыв/expiry/выход из squad и отдельная rotation
 TT credentials должны удалять доступ и завершать старые sessions.
 
 ## Данные, восстановление и ограничения

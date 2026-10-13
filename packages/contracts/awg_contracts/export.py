@@ -4,13 +4,14 @@ from pathlib import Path
 
 from .models import ALL_MODELS
 from .trusttunnel import TRUSTTUNNEL_MODELS
+from .managed_node import MANAGED_NODE_MODELS
 
 
 def export(destination: Path | None = None):
     directory = destination or Path(__file__).resolve().parent.parent / 'v1'
     directory.mkdir(parents=True, exist_ok=True)
     components = {}
-    for model in ALL_MODELS + TRUSTTUNNEL_MODELS:
+    for model in ALL_MODELS + TRUSTTUNNEL_MODELS + MANAGED_NODE_MODELS:
         schema = model.model_json_schema()
         schema['$schema'] = 'https://json-schema.org/draft/2020-12/schema'
         (directory / f'{model.__name__}.schema.json').write_text(json.dumps(schema, indent=2) + '\n')
@@ -20,6 +21,10 @@ def export(destination: Path | None = None):
     paths = {}
     operations = [
         ('/v1/capabilities', 'get', None, 'AgentCapabilities'),
+        ('/v1/node/capabilities', 'get', None, 'NodeCapabilities'),
+        ('/v1/node/validate', 'post', 'NodeDesiredConfig', 'NodeValidationResult'),
+        ('/v1/node/apply', 'put', 'NodeApplyRequest', 'NodeActualState'),
+        ('/v1/node/state', 'get', None, 'NodeActualState'),
         ('/v1/deployments/{deployment_id}/validate', 'post', 'DesiredDeployment', 'ValidationResult'),
         ('/v1/deployments/{deployment_id}/apply', 'put', 'ApplyRequest', 'ActualDeployment'),
         ('/v1/deployments/{deployment_id}/state', 'get', None, 'ActualDeployment'),

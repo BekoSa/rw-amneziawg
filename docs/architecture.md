@@ -239,3 +239,24 @@ fingerprint. Отзыв credentials применяется при rollback; stag
 в подписках. TT usage пока не включается в AWG traffic ledger.
 
 Порты, profile workflow, native export и ограничения: [TrustTunnel](trusttunnel.md).
+
+## Managed node ingress
+
+Managed install добавляет отдельный `node-ingress`: в production он владеет host
+TCP/UDP sockets с единственной capability NET_BIND_SERVICE. Agent и AWG runtime
+остаются в bridge namespace. Ingress не получает Docker API, NET_ADMIN или TUN;
+его единственный backend — immutable private IPv4 Agent из install envelope.
+Management API и произвольные destinations не входят в разрешённые backend roles.
+
+Controller хранит `node_resources` и immutable `node_resource_revisions` только
+в extension DB. Versioned NodeDesiredConfig проходит validate/prepare/commit
+через Agent; Agent использует authenticated UDS с HMAC, session challenge и
+монотонным nonce. Accepted intent и commit journal сохраняются до подтверждения.
+Отзыв протокола останавливает runtime даже при ошибке изменения ingress.
+
+Публикация проверяет собственный READY протокола и точные ACTIVE/backend-ready
+bindings, подтверждённые digest сохранённой applied resource revision. Ошибка
+изменения TT не скрывает неизменённый рабочий AWG binding. Legacy API404 означает
+явную необходимость однократной миграции для управления ports/protocols из TUI.
+Development и managed network labs используют только bridge; production manifest
+на development-host не применяется. Firewall/DNS остаются внешними prerequisites.

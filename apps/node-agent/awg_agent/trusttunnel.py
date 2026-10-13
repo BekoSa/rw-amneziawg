@@ -61,8 +61,9 @@ class TrustTunnelService:
                     raise ValueError('wrong node identity')
                 if any(identifier != desired.deployment_id for identifier in self.identifiers()):
                     raise ValueError('only one TrustTunnel deployment is supported per node')
+                resources = getattr(self, "resources", None)
                 self.runtime.validate(desired)
-                self.certificates.validate(desired.profile.tls)
+                if resources is None: self.certificates.validate(desired.profile.tls)
             except ValueError as exc:
                 issues.append(ValidationIssue(code='INVALID_CONFIGURATION', message=str(exc)))
             return TrustTunnelValidationResult(valid=not issues, revision=desired.revision,
@@ -71,6 +72,10 @@ class TrustTunnelService:
     def apply(self, request):
         desired = request.desired
         with self.lock:
+            resources = getattr(self, "resources", None)
+            if resources is not None:
+                resources.require_protocol(desired, "trusttunnel")
+                if desired.profile.enabled: self.certificates.validate(desired.profile.tls)
             validation = self.validate(desired)
             if not validation.valid:
                 raise ValueError(validation.issues[0].message)

@@ -20,6 +20,7 @@ from awg_config import random_parameters
 
 from .api import APIError, ControllerAPI
 from .pki import node_bundle
+from .resources import NodeResourcesScreen
 from .trusttunnel import TrustTunnelExportScreen, TrustTunnelProfileScreen
 
 NUMERIC = {'Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'S3', 'S4'}
@@ -424,7 +425,7 @@ class AWGApp(App):
             with TabPane('Обзор', id='overview'):
                 yield Static('Загрузка…', id='summary')
             with TabPane('Ноды', id='nodes'):
-                yield Static('n — новая нода (выпустить ключ и команду установки)', classes='tab-hint')
+                yield Static('n — новая нода; e — управление протоколами, портами и состоянием выбранной ноды', classes='tab-hint')
                 yield DataTable(id='nodes-table', cursor_type='row')
             with TabPane('Профили', id='profiles'):
                 yield Static('n — создать профиль, e — изменить выбранный', classes='tab-hint')
@@ -586,6 +587,15 @@ class AWGApp(App):
             await self.open_profile(None)
 
     async def action_edit(self):
+        if self.active_tab() == 'nodes':
+            table = self.query_one('#nodes-table', DataTable)
+            if table.row_count:
+                key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+                node_id = key.split(':', 1)[0]
+                node = next(n for n in self.data['nodes'] if n['registration']['node_id'] == node_id)
+                await self.push_screen(NodeResourcesScreen(self.api, node_id, node['registration']['name']),
+                                       lambda _: self.load())
+            return
         if self.active_tab() == 'trusttunnel':
             table = self.query_one('#trusttunnel-table', DataTable)
             if table.row_count:

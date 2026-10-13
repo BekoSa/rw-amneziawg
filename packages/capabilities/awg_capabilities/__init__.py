@@ -82,13 +82,24 @@ def identify(user_agent: str) -> ClientCapability:
     return FAMILIES['generic']
 
 
+def throne_trusttunnel_supported(user_agent: str) -> bool:
+    """Official tt:// TLV import is available since Throne 1.3.0 (#1881).
+
+    Evidence: throneproj/Throne 1.3.2 src/configs/outbounds/trusttunnel.cpp.
+    Reject prereleases and partial/unverified versions rather than inferring from format.
+    """
+    match = re.fullmatch(r'Throne/v?(\d+)\.(\d+)\.(\d+)(?:\s+.*)?', user_agent.strip(), re.IGNORECASE)
+    return match is not None and tuple(int(part) for part in match.groups()) >= (1, 3, 0)
+
+
 def trusttunnel_supported(user_agent: str) -> bool:
     """TT requires a known core; app and generic protocol names are insufficient.
 
     Evidence: MetaCubeX/mihomo v1.19.32 adapter/outbound/trusttunnel.go.
-    Native exports are explicit authenticated downloads, never inferred from UA.
+    Throne >=1.3.0 imports the official native link; generic clients require explicit downloads.
     """
     core = mihomo_core(user_agent)
     verified = re.fullmatch(r'(?:clash\.meta|mihomo)/v?\d+\.\d+\.\d+(?:\s+.*)?',
                             user_agent.strip(), re.IGNORECASE)
-    return verified is not None and core is not None and core >= (1, 19, 32)
+    return (verified is not None and core is not None and core >= (1, 19, 32)
+            or throne_trusttunnel_supported(user_agent))

@@ -33,6 +33,7 @@ case "$action" in
         docker build -f deploy/dev/Dockerfile.trusttunnel-client -t awg-tt-client:local .
         docker build -f apps/node-agent/Dockerfile --target trusttunnel-toolchain -t awg-tt-toolchain:local .
         docker build -f deploy/dev/Dockerfile.trusttunnel-server -t awg-tt-server:local .
+        docker build -f deploy/dev/Dockerfile.throne-client -t awg-throne-client:local .
         ;;
     lint) lint ;;
     test|down)
@@ -47,8 +48,8 @@ case "$action" in
         if [ "$action" = down ]; then
             compose down
         else
-            compose up -d pebble tt-server tt-client tt-target
-            if [ "$#" -eq 0 ]; then set -- -q tests/integration/test_trusttunnel.py; fi
+            compose up -d pebble tt-server tt-client tt-target tt-throne
+            if [ "$#" -eq 0 ]; then set -- -q tests/integration/test_trusttunnel.py tests/integration/test_throne_trusttunnel.py; fi
             # Avoid a pipeline hiding pytest failure. Output is retained even on failure.
             status=0
             compose run --rm -T tooling pytest -p no:cacheprovider "$@" > "$evidence/tests.log" 2>&1 || status=$?

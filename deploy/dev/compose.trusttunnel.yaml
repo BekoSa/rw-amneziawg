@@ -12,8 +12,9 @@ services:
     working_dir: /workspace
     volumes: [../..:/workspace:ro]
     environment:
-      PYTHONPATH: /workspace:/workspace/packages/contracts:/workspace/packages/awg-config:/workspace/apps/node-agent
+      PYTHONPATH: /workspace:/workspace/packages/contracts:/workspace/packages/awg-config:/workspace/apps/node-agent:/workspace/packages/subscription-renderers:/workspace/packages/capabilities
       TT_LAB: '1'
+      THRONE_LAB: '1'
     networks:
       management: {ipv4_address: 10.241.12.3}
       client-control: {ipv4_address: 10.241.13.2}
@@ -60,6 +61,13 @@ services:
       # Deliberately points to a container without challenge listeners.
       underlay: {ipv4_address: 10.241.10.3, aliases: [fail.tt.test]}
       client-control: {ipv4_address: 10.241.13.3}
+  tt-throne:
+    <<: *hardened
+    image: awg-throne-client:local
+    build: {context: ../.., dockerfile: deploy/dev/Dockerfile.throne-client}
+    networks:
+      underlay: {ipv4_address: 10.241.10.5}
+      client-control: {ipv4_address: 10.241.13.5}
   tt-target:
     <<: *hardened
     image: awg-tt-client:local

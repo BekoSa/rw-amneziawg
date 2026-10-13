@@ -37,6 +37,154 @@
         }
       }
     },
+    "/v1/node/capabilities": {
+      "get": {
+        "operationId": "get_NodeCapabilities",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeCapabilities"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/node/validate": {
+      "post": {
+        "operationId": "post_NodeValidationResult",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeValidationResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeDesiredConfig"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/node/apply": {
+      "put": {
+        "operationId": "put_NodeActualState",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeActualState"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NodeApplyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/node/state": {
+      "get": {
+        "operationId": "get_NodeActualState",
+        "security": [
+          {
+            "mutualTLS": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeActualState"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Sanitized error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/deployments/{deployment_id}/validate": {
       "post": {
         "operationId": "post_ValidationResult",
@@ -2382,6 +2530,560 @@
           "content"
         ],
         "title": "TrustTunnelExportResponse",
+        "type": "object"
+      },
+      "NodeInstallEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "envelope_id": {
+            "format": "uuid",
+            "title": "Envelope Id",
+            "type": "string"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "backend_ipv4": {
+            "title": "Backend Ipv4",
+            "type": "string"
+          },
+          "bind_addresses": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Bind Addresses",
+            "type": "array"
+          },
+          "reserved_ports": {
+            "items": {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxItems": 128,
+            "title": "Reserved Ports",
+            "type": "array"
+          },
+          "max_bindings": {
+            "default": 128,
+            "maximum": 1024,
+            "minimum": 1,
+            "title": "Max Bindings",
+            "type": "integer"
+          },
+          "max_udp_flows": {
+            "default": 4096,
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Max Udp Flows",
+            "type": "integer"
+          },
+          "max_tcp_connections": {
+            "default": 4096,
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Max Tcp Connections",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "envelope_id",
+          "node_id",
+          "backend_ipv4"
+        ],
+        "title": "NodeInstallEnvelope",
+        "type": "object"
+      },
+      "IngressBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "binding_id": {
+            "format": "uuid",
+            "title": "Binding Id",
+            "type": "string"
+          },
+          "deployment_id": {
+            "format": "uuid",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "transport": {
+            "enum": [
+              "tcp",
+              "udp"
+            ],
+            "title": "Transport",
+            "type": "string"
+          },
+          "public_address": {
+            "default": "0.0.0.0",
+            "title": "Public Address",
+            "type": "string"
+          },
+          "public_port": {
+            "maximum": 65535,
+            "minimum": 1,
+            "title": "Public Port",
+            "type": "integer"
+          },
+          "backend_role": {
+            "enum": [
+              "awg",
+              "trusttunnel",
+              "acme-http",
+              "acme-tls-alpn"
+            ],
+            "title": "Backend Role",
+            "type": "string"
+          },
+          "backend_port": {
+            "maximum": 65535,
+            "minimum": 1,
+            "title": "Backend Port",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "binding_id",
+          "deployment_id",
+          "transport",
+          "public_port",
+          "backend_role",
+          "backend_port"
+        ],
+        "title": "IngressBinding",
+        "type": "object"
+      },
+      "NodeDesiredConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "node.remnawave-extension.io/v1",
+            "default": "node.remnawave-extension.io/v1",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": "1.0",
+            "default": "1.0",
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "envelope_digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Envelope Digest",
+            "type": "string"
+          },
+          "enabled_protocols": {
+            "items": {
+              "enum": [
+                "amneziawg",
+                "trusttunnel"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "title": "Enabled Protocols",
+            "type": "array"
+          },
+          "bindings": {
+            "items": {
+              "$ref": "#/components/schemas/IngressBinding"
+            },
+            "maxItems": 1024,
+            "title": "Bindings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "node_id",
+          "revision",
+          "envelope_digest"
+        ],
+        "title": "NodeDesiredConfig",
+        "type": "object"
+      },
+      "NodeApplyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "desired": {
+            "$ref": "#/components/schemas/NodeDesiredConfig"
+          },
+          "expected_applied_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expected Applied Revision"
+          }
+        },
+        "required": [
+          "desired"
+        ],
+        "title": "NodeApplyRequest",
+        "type": "object"
+      },
+      "NodeCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "node.remnawave-extension.io/v1",
+            "default": "node.remnawave-extension.io/v1",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": "1.0",
+            "default": "1.0",
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "envelope": {
+            "$ref": "#/components/schemas/NodeInstallEnvelope"
+          },
+          "installed_protocols": {
+            "items": {
+              "$ref": "#/components/schemas/ProtocolCapability"
+            },
+            "title": "Installed Protocols",
+            "type": "array"
+          },
+          "supports_dynamic_ingress": {
+            "default": true,
+            "title": "Supports Dynamic Ingress",
+            "type": "boolean"
+          },
+          "ingress_protocol_versions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Ingress Protocol Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "node_id",
+          "envelope"
+        ],
+        "title": "NodeCapabilities",
+        "type": "object"
+      },
+      "NodeBindingActual": {
+        "additionalProperties": false,
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/IngressBinding"
+          },
+          "state": {
+            "enum": [
+              "PREPARED",
+              "ACTIVE",
+              "ERROR"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "backend_ready": {
+            "default": false,
+            "title": "Backend Ready",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationIssue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "binding",
+          "state"
+        ],
+        "title": "NodeBindingActual",
+        "type": "object"
+      },
+      "NodeActualState": {
+        "additionalProperties": false,
+        "properties": {
+          "api_version": {
+            "const": "node.remnawave-extension.io/v1",
+            "default": "node.remnawave-extension.io/v1",
+            "title": "Api Version",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": "1.0",
+            "default": "1.0",
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "desired_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Desired Revision"
+          },
+          "accepted_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Accepted Revision"
+          },
+          "applied_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Applied Revision"
+          },
+          "last_known_good_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Known Good Revision"
+          },
+          "applied_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Applied Digest"
+          },
+          "state": {
+            "$ref": "#/components/schemas/DeploymentState",
+            "default": "DRAFT"
+          },
+          "healthy": {
+            "default": false,
+            "title": "Healthy",
+            "type": "boolean"
+          },
+          "bindings": {
+            "items": {
+              "$ref": "#/components/schemas/NodeBindingActual"
+            },
+            "maxItems": 1024,
+            "title": "Bindings",
+            "type": "array"
+          },
+          "runtime_epoch": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Runtime Epoch"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationIssue"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "node_id"
+        ],
+        "title": "NodeActualState",
+        "type": "object"
+      },
+      "NodeValidationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "revision": {
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Digest",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "valid",
+          "revision",
+          "digest"
+        ],
+        "title": "NodeValidationResult",
+        "type": "object"
+      },
+      "IngressPrepareRequest": {
+        "additionalProperties": false,
+        "description": "Local ingress prepare shares the node Apply optimistic concurrency contract.",
+        "properties": {
+          "desired": {
+            "$ref": "#/components/schemas/NodeDesiredConfig"
+          },
+          "expected_applied_revision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expected Applied Revision"
+          }
+        },
+        "required": [
+          "desired"
+        ],
+        "title": "IngressPrepareRequest",
+        "type": "object"
+      },
+      "IngressPrepared": {
+        "additionalProperties": false,
+        "properties": {
+          "ticket_id": {
+            "format": "uuid",
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket_id",
+          "revision",
+          "digest"
+        ],
+        "title": "IngressPrepared",
+        "type": "object"
+      },
+      "IngressCommitRequest": {
+        "additionalProperties": false,
+        "description": "Commit and abort refer only to an authenticated reserved ticket.",
+        "properties": {
+          "ticket_id": {
+            "format": "uuid",
+            "title": "Ticket Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Digest",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket_id",
+          "revision",
+          "digest"
+        ],
+        "title": "IngressCommitRequest",
         "type": "object"
       }
     },

@@ -1,0 +1,148 @@
+{
+  "$defs": {
+    "IngressBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "format": "uuid",
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "deployment_id": {
+          "format": "uuid",
+          "title": "Deployment Id",
+          "type": "string"
+        },
+        "transport": {
+          "enum": [
+            "tcp",
+            "udp"
+          ],
+          "title": "Transport",
+          "type": "string"
+        },
+        "public_address": {
+          "default": "0.0.0.0",
+          "title": "Public Address",
+          "type": "string"
+        },
+        "public_port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Public Port",
+          "type": "integer"
+        },
+        "backend_role": {
+          "enum": [
+            "awg",
+            "trusttunnel",
+            "acme-http",
+            "acme-tls-alpn"
+          ],
+          "title": "Backend Role",
+          "type": "string"
+        },
+        "backend_port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Backend Port",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "binding_id",
+        "deployment_id",
+        "transport",
+        "public_port",
+        "backend_role",
+        "backend_port"
+      ],
+      "title": "IngressBinding",
+      "type": "object"
+    },
+    "NodeDesiredConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "api_version": {
+          "const": "node.remnawave-extension.io/v1",
+          "default": "node.remnawave-extension.io/v1",
+          "title": "Api Version",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "node_id": {
+          "format": "uuid",
+          "title": "Node Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "envelope_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Envelope Digest",
+          "type": "string"
+        },
+        "enabled_protocols": {
+          "items": {
+            "enum": [
+              "amneziawg",
+              "trusttunnel"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "title": "Enabled Protocols",
+          "type": "array"
+        },
+        "bindings": {
+          "items": {
+            "$ref": "#/$defs/IngressBinding"
+          },
+          "maxItems": 1024,
+          "title": "Bindings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "node_id",
+        "revision",
+        "envelope_digest"
+      ],
+      "title": "NodeDesiredConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "desired": {
+      "$ref": "#/$defs/NodeDesiredConfig"
+    },
+    "expected_applied_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Applied Revision"
+    }
+  },
+  "required": [
+    "desired"
+  ],
+  "title": "NodeApplyRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

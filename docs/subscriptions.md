@@ -21,7 +21,7 @@ Gateway доверяет `X-Forwarded-*` только в этой тополог
 |---|---|---|---|---|
 | AmneziaVPN ≥ 5.0.1.5 | `vpn://` ключ на странице подписки | да | да | `amnezia-client` 5.0.3.0 `importController.cpp`, `awgProtocolConfig.cpp` |
 | Mihomo и приложения на нём (`mihomo`, Clash Verge, FlClash, ClashMeta for Android, ClashX Meta, Nyanpasu, Koala Clash) | приложению — `proxy-providers: AmneziaWG` (см. ниже); самому ядру (`clash.meta/vX`, `mihomo/X`) — `type: wireguard` + `amnezia-wg-option` прямо в `proxies`, для 3.1 `version: 3` | ядро ≥ 1.19.14 | ядро ≥ 1.19.30 | mihomo `adapter/outbound/wireguard.go` (v1.19.13/14/30/31) |
-| Throne (`Throne/…`, последняя 1.3.1) | `wg://…&enable_amnezia=true&jc=…&header_protection_key=…` | да | да | Throne 1.3.1 `src/configs/outbounds/wireguard.cpp` |
+| Throne (`Throne/…`, проверенная 1.3.2) | `wg://…&enable_amnezia=true&jc=…&header_protection_key=…` | да | да | Throne `src/configs/outbounds/wireguard.cpp` |
 | INCY (`INCY/…`) | `amneziawg://<base64url .conf>#Имя` | да | нет* | incy.gitbook.io `subscription-format` |
 | Прочие клиенты со списком ссылок (v2rayNG, Hiddify …) | та же строка `amneziawg://` (незнакомые схемы клиенты пропускают) | да | нет* | — |
 | Happ | ничего: по документации Happ поддерживает только VLESS/VMess/SS/Socks5/Trojan/Hysteria2 | — | — | happ.su dev-docs |

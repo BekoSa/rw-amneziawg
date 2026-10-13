@@ -4,6 +4,8 @@ import httpx
 from awg_contracts import AgentCapabilities, ActualDeployment, ApplyRequest, TrafficSnapshot, ValidationResult
 from awg_contracts import (TrustTunnelActual, TrustTunnelApplyRequest, TrustTunnelValidationResult,
     TrustTunnelExportRequest, TrustTunnelExportResponse, wire_payload)
+from awg_contracts.managed_node import (NodeCapabilities, NodeActualState, NodeApplyRequest,
+    NodeValidationResult, NODE_API_VERSION)
 
 
 class AgentError(RuntimeError):
@@ -49,7 +51,7 @@ class AgentClient:
     async def close(self):
         await self.http.aclose()
 
-    async def request(self, registration, method, path, model, body=None, *, trusttunnel=False):
+    async def request(self, registration, method, path, model, body=None, *, trusttunnel=False, legacy404=False):
         parsed = urlsplit(registration.management_url)
         if parsed.scheme != 'https' or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ('','/'):
             raise AgentError('invalid management origin')
@@ -57,6 +59,12 @@ class AgentClient:
             response = await self.http.request(method, registration.management_url.rstrip('/')+path,
                 json=(wire_payload(body) if trusttunnel else body.model_dump(mode='json')) if body else None,
                 extensions={'sni_hostname': f'{registration.node_id}.agents.awg.internal'})
+            if legacy404 and response.status_code == 404:
+                return None
+            if path.startswith('/v1/node/') and response.is_success:
+                payload = response.json()
+                if payload.get('api_version') != NODE_API_VERSION or payload.get('protocol_version') != '1.0':
+                    raise AgentError('Unsupported node API', 'UNSUPPORTED_NODE_API')
             if response.status_code == 404 and path.endswith('/state'):
                 from uuid import UUID
                 return model(deployment_id=UUID(path.split('/')[-2]))
@@ -69,6 +77,28 @@ class AgentClient:
         value = await self.request(registration, 'GET', '/v1/capabilities', AgentCapabilities)
         if value.node_id != registration.node_id:
             raise AgentError('agent identity mismatch', 'AGENT_IDENTITY_MISMATCH')
+        return value
+
+    async def node_capabilities(self, registration):
+        value = await self.request(registration, 'GET', '/v1/node/capabilities', NodeCapabilities, legacy404=True)
+        if value is not None and value.node_id != registration.node_id:
+            raise AgentError('Node identity mismatch', 'AGENT_IDENTITY_MISMATCH')
+        return value
+
+    async def node_state(self, registration):
+        value = await self.request(registration, 'GET', '/v1/node/state', NodeActualState)
+        if value.node_id != registration.node_id:
+            raise AgentError('Node identity mismatch', 'AGENT_IDENTITY_MISMATCH')
+        return value
+
+    async def node_validate(self, registration, desired):
+        return await self.request(registration, 'POST', '/v1/node/validate', NodeValidationResult, desired)
+
+    async def node_apply(self, registration, desired, expected):
+        value = await self.request(registration, 'PUT', '/v1/node/apply', NodeActualState,
+            NodeApplyRequest(desired=desired, expected_applied_revision=expected))
+        if value.node_id != registration.node_id:
+            raise AgentError('Node identity mismatch', 'AGENT_IDENTITY_MISMATCH')
         return value
 
     async def validate(self, registration, desired):

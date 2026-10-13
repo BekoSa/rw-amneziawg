@@ -1,0 +1,29 @@
+{
+  "additionalProperties": false,
+  "description": "Commit and abort refer only to an authenticated reserved ticket.",
+  "properties": {
+    "ticket_id": {
+      "format": "uuid",
+      "title": "Ticket Id",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "digest": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "ticket_id",
+    "revision",
+    "digest"
+  ],
+  "title": "IngressCommitRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

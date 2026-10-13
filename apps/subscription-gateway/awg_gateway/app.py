@@ -16,7 +16,7 @@ from starlette.responses import Response, StreamingResponse
 
 from awg_contracts import SubscriptionMaterial
 from awg_contracts.trusttunnel import TrustTunnelMaterial
-from awg_capabilities import FAMILIES, identify, mihomo_core, mihomo_core_supports, trusttunnel_supported
+from awg_capabilities import FAMILIES, identify, mihomo_core, mihomo_core_supports, trusttunnel_supported, throne_trusttunnel_supported
 from subscription_renderers import (PROVIDER_HEADER, RawAWGRenderer, accepts, enrich, enrich_info, info_document,
                                     mihomo_provider)
 from subscription_renderers import trusttunnel as tt_renderer
@@ -307,7 +307,8 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
             awg_available = False
             body = mihomo_provider([])
         tt_available = False
-        if (not stock_denied(upstream) and trusttunnel_supported(request.headers.get('user-agent', ''))
+        if (not stock_denied(upstream) and identify(request.headers.get('user-agent', '')).family == 'mihomo'
+                and trusttunnel_supported(request.headers.get('user-agent', ''))
                 and not CONDITIONAL_HEADERS.intersection(request.headers)
                 and upstream.headers.get('content-encoding', 'identity').lower() == 'identity'
                 and 'no-transform' not in upstream.headers.get('cache-control', '').lower()):
@@ -475,7 +476,8 @@ def create_app(settings: GatewaySettings | None = None, stock_client: httpx.Asyn
         if info or trusttunnel_supported(request.headers.get('user-agent', '')):
             try:
                 async with asyncio.timeout(config.enrichment_timeout):
-                    entries = (await tt_material(matched['token'], 'all' if info else None)).entries
+                    native_format = 'all' if info else 'deeplink' if throne_trusttunnel_supported(request.headers.get('user-agent', '')) else None
+                    entries = (await tt_material(matched['token'], native_format)).entries
                     if info:
                         download = ((public_url(upstream) or config.subscription_prefix + matched['token']).split('?', 1)[0].rstrip('/')
                                     + '/trusttunnel')

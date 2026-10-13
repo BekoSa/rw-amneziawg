@@ -1,0 +1,3 @@
+FROM awg-dev-tooling:local
+COPY deploy/dev/trusttunnel/managed_init.py /opt/managed_init.py
+COPY deploy/dev/trusttunnel/managed_awg_init.py /opt/managed_awg_init.py

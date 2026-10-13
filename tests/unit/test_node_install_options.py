@@ -20,7 +20,7 @@ def test_invalid_trusttunnel_ports_fail_before_installation(tmp_path, flag, valu
 def test_trusttunnel_udp_must_not_overlap_awg(tmp_path, ports):
     destination = tmp_path / 'installation'
     result = subprocess.run(['sh', str(Path(__file__).resolve().parents[2] / 'install-node.sh'),
-        '--dir', str(destination), '--trusttunnel', '--udp-ports', ports],
+        '--legacy', '--dir', str(destination), '--trusttunnel', '--udp-ports', ports],
         capture_output=True, text=True, timeout=5)
     assert result.returncode != 0
     assert 'TrustTunnel UDP port conflicts with AmneziaWG' in result.stderr

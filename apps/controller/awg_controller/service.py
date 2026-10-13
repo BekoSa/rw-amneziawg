@@ -11,6 +11,7 @@ from .domain import KeyVault, eligible, counter_delta
 from .agent_client import AgentError
 from remnawave_client import UpstreamError
 from .trusttunnel import TrustTunnelController, TT_LOCK_ID
+from .managed_node import NodeResourceController, NODE_LOCK_ID
 
 
 async def one(conn, query, params=()):
@@ -31,6 +32,8 @@ class Controller:
         self.last_upstream_ok = None
         self.trusttunnel = TrustTunnelController(db, upstream, agents, settings)
         self.trusttunnel.wakeup = self.wakeup
+        self.resources = NodeResourceController(db, agents, settings)
+        self.trusttunnel.resources = self.resources
 
     async def error(self, code, entity=None):
         async with self.db.connect() as conn:
@@ -114,6 +117,7 @@ class Controller:
     async def validate_profile(self, profile_id):
         async with self.db.connect() as conn:
             await conn.execute('SELECT pg_advisory_xact_lock(%s)',(LOCK_ID,))
+            await conn.execute('SELECT pg_advisory_xact_lock(%s)',(TT_LOCK_ID,))
             record = await one(conn,'SELECT draft FROM awg_profiles WHERE id=%s',(profile_id,))
             if not record:
                 raise ValueError('Unknown profile')
@@ -131,6 +135,10 @@ class Controller:
                     peers = DesiredDeployment.model_validate(deployment['desired']).peers
                 desired = DesiredDeployment(deployment_id=deployment['id'],node_id=node_id,
                     revision=deployment['next_revision'],profile=profile,peers=peers)
+                resources = await self.resources.validate_profile(conn, NodeRegistration.model_validate(node['registration']), desired)
+                if resources is not None and not resources.valid:
+                    results.append(resources)
+                    continue
                 result = await self.agents.validate(NodeRegistration.model_validate(node['registration']),desired)
                 if result.digest != content_digest(desired) or result.revision != desired.revision:
                     raise AgentError('Validation digest mismatch')
@@ -143,9 +151,20 @@ class Controller:
     async def apply_profile(self, profile_id, expected_digest):
         async with self.db.connect() as conn:
             await conn.execute('SELECT pg_advisory_xact_lock(%s)',(LOCK_ID,))
+            await conn.execute('SELECT pg_advisory_xact_lock(%s)',(TT_LOCK_ID,))
+            await conn.execute('SELECT pg_advisory_xact_lock(%s)',(NODE_LOCK_ID,))
             record = await one(conn,'SELECT * FROM awg_profiles WHERE id=%s',(profile_id,))
             if not record or record['validated_digest'] != content_digest(record['draft']) or expected_digest != record['validated_digest']:
                 raise ValueError('Profile must pass validation after the last edit')
+            profile = AWGProfile.model_validate(record['draft'])
+            for node_id in profile.node_ids:
+                registration = await self.resources._registration(conn, node_id)
+                deployment = await self._deployment(conn, profile_id, node_id)
+                candidate = DesiredDeployment(deployment_id=deployment['id'],node_id=node_id,
+                    revision=deployment['next_revision'],profile=profile)
+                result = await self.resources.validate_profile(conn, registration, candidate)
+                if result is not None and not result.valid:
+                    raise AgentError('Resource validation expired', result.issues[0].code if result.issues else 'NODE_VALIDATION_FAILED')
             await conn.execute('UPDATE awg_profiles SET active=draft WHERE id=%s',(profile_id,))
         self.wakeup.set()
 
@@ -221,6 +240,9 @@ class Controller:
     async def _desired(self, conn, profile, node, users):
         deployment = await self._deployment(conn,profile.profile_id,node['id'])
         registration = NodeRegistration.model_validate(node['registration'])
+        if not (registration.enabled and node['id'] in profile.node_ids and
+                await self.resources.protocol_enabled(conn,node['id'],'amneziawg')):
+            profile = profile.model_copy(update={'enabled':False})
         accepted = set()
         for user in users.values():
             stored = await one(conn,'SELECT * FROM awg_users WHERE id=%s',(user.user_uuid,))
@@ -285,6 +307,13 @@ class Controller:
         registration = NodeRegistration.model_validate(deployment['registration'])
         desired = DesiredDeployment.model_validate(deployment['desired'])
         try:
+            try:
+                await self.resources.ensure(conn, registration)
+            except AgentError as failure:
+                # A disabled snapshot only removes access; ingress failure must
+                # not block revocation. Enabled snapshots retain path authority.
+                if desired.profile.enabled and (failure.reason not in {'PORT_IN_USE','INGRESS_UNAVAILABLE','BACKEND_NOT_READY'} or not await self.resources.existing_path(conn,desired,'amneziawg')):
+                    raise
             capabilities = await self.agents.capabilities(registration)
             actual = await self.agents.state(registration,deployment['id'])
             # Capture old counters before changing peers/runtime where possible.
@@ -296,6 +325,7 @@ class Controller:
                     raise AgentError('Desired revision rejected')
                 self.metrics['apply'] += 1
                 actual = await self.agents.apply(registration,desired,actual.applied_revision)
+            await self.resources.refresh(conn, registration)
             if actual.state.value != 'READY' or not actual.healthy or actual.applied_revision != desired.revision or actual.applied_digest != content_digest(desired):
                 raise AgentError('Revision not ready')
             async with conn.transaction():
@@ -362,6 +392,9 @@ class Controller:
                         continue
                     actual = ActualDeployment.model_validate(row['actual'])
                     profile = desired.profile
+                    if not await self.resources.publishable(conn, desired.node_id, desired.deployment_id,
+                            profile.endpoint.port, 'amneziawg'):
+                        continue
                     if (not NodeRegistration.model_validate(row['registration']).enabled or not profile.enabled or
                         not eligible(user,profile.access.squad_ids,profile.access.user_ids,int(stored['usage']),self.settings.quota_policy) or
                         datetime.now(timezone.utc)-row['last_seen_at'] > timedelta(seconds=self.settings.ready_max_age) or

@@ -6,8 +6,8 @@ import json
 import yaml
 
 from awg_contracts.trusttunnel import TrustTunnelSubscriptionEntry
-from awg_capabilities import trusttunnel_supported
-from . import StrictLoader, Unsupported
+from awg_capabilities import trusttunnel_supported, throne_trusttunnel_supported
+from . import StrictLoader, Unsupported, append_lines, Base64Renderer
 
 
 def mihomo_proxy(entry: TrustTunnelSubscriptionEntry) -> dict:
@@ -22,6 +22,15 @@ def mihomo_proxy(entry: TrustTunnelSubscriptionEntry) -> dict:
 def enrich(stock: bytes, entries: list[TrustTunnelSubscriptionEntry], user_agent: str) -> bytes:
     if not entries or not trusttunnel_supported(user_agent):
         return stock
+    if throne_trusttunnel_supported(user_agent):
+        try:
+            links = list(dict.fromkeys(native(entry, 'deeplink').decode('utf-8') for entry in entries))
+            try:
+                return append_lines(stock, links)
+            except (ValueError, UnicodeError):
+                return Base64Renderer().render(stock, links)
+        except (ValueError, UnicodeError):
+            return stock
     try:
         parsed = yaml.load(stock.decode('utf-8'), Loader=StrictLoader)
         if not isinstance(parsed, dict) or not isinstance(parsed.get('proxies'), list):

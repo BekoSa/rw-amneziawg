@@ -106,7 +106,8 @@ class AgentService:
             if desired.node_id != self.node_id: raise ValueError('wrong node identity')
             if len(desired.peers) > self.capabilities().max_peers: raise ValueError('peer limit exceeded')
             compile_uapi(desired, bytes(32), set())
-            ports = listen_ports()
+            resources = getattr(self, "resources", None)
+            ports = [] if resources is not None else listen_ports()
             if ports and desired.profile.endpoint.port not in ports:
                 raise ValueError(f'UDP port {desired.profile.endpoint.port} is not open on this node '
                                  f'(open: {format_ports(ports)}); use one of them or re-run install-node.sh --udp-ports')
@@ -148,6 +149,8 @@ class AgentService:
     def apply(self, request: ApplyRequest):
         desired = request.desired
         with self.lock:
+            resources = getattr(self, "resources", None)
+            if resources is not None: resources.require_protocol(desired, "awg")
             validation = self.validate(desired)
             if not validation.valid: raise ValueError(validation.issues[0].message)
             record = self._load(desired.deployment_id)

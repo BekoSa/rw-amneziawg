@@ -1,0 +1,51 @@
+# Prepared disposable CI runner only: requires already-present /dev/net/tun.
+# Overlay stock/live lab. Public client has no route to Agent backend or target.
+services:
+  managed-awg-init:
+    image: awg-managed-init:local
+    profiles: [live]
+    command: [python, /opt/managed_awg_init.py]
+    volumes: [managed-awg-control:/control]
+    network_mode: none
+    cap_drop: [ALL]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+  managed-awg-ingress:
+    image: awg-dev-ingress:local
+    profiles: [live]
+    depends_on: {managed-awg-init: {condition: service_completed_successfully}}
+    environment:
+      INGRESS_ENVELOPE_FILE: /control/envelope.json
+      INGRESS_SECRET_FILE: /control/ingress.secret
+      INGRESS_SOCKET: /control/ingress.sock
+      INGRESS_STATE_DIR: /state
+    volumes: [managed-awg-control:/control, managed-awg-ingress-state:/state]
+    cap_drop: [ALL]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    networks:
+      underlay: {ipv4_address: 10.240.4.2}
+      managed-awg-backend: {ipv4_address: 10.240.7.2}
+  awg-agent:
+    depends_on: {managed-awg-init: {condition: service_completed_successfully}, managed-awg-ingress: {condition: service_started}}
+    environment:
+      NODE_INSTALL_ENVELOPE: /control/envelope.json
+      NODE_INGRESS_SOCKET: /control/ingress.sock
+      NODE_INGRESS_SECRET: /control/ingress.secret
+      TT_ISOLATED_RUNTIME: '1'
+      AWG_EGRESS_DENY: 10.240.3.0/24,10.240.4.0/24,10.240.6.0/24,10.240.7.0/24,10.240.5.1/32,172.16.0.0/12,192.168.0.0/16
+    volumes: [managed-awg-control:/control]
+    networks: !override
+      extension:
+      managed-awg-backend: {ipv4_address: 10.240.7.3}
+      target: {ipv4_address: 10.240.5.2}
+networks:
+  managed-awg-backend:
+    driver: bridge
+    internal: true
+    ipam: {config: [{subnet: 10.240.7.0/24}]}
+volumes:
+  managed-awg-control:
+  managed-awg-ingress-state:

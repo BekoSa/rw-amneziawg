@@ -11,11 +11,13 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 from awg_contracts import AWGProfile, NodeRegistration, SubscriptionRequest, TrustTunnelProfile, wire_payload
+from awg_contracts.managed_node import NodeDesiredConfig, NodeApplyRequest
 from remnawave_client import RemnawaveClient, UpstreamError, verify_webhook
 from .config import Settings
 from .db import Database
 from .agent_client import AgentClient, AgentError
 from .service import Controller, rows
+from .managed_node import NodeResourceError
 
 
 class ApplyProfileRequest(BaseModel):
@@ -86,6 +88,9 @@ def create_app(controller=None):
     @app.exception_handler(ValueError)
     async def domain_error(request, exc):
         # Do not echo exception/input; fields can contain secrets.
+        if isinstance(exc, NodeResourceError):
+            return JSONResponse(status_code=409,content={'code':'OPERATION_REJECTED','reason':exc.reason,
+                'correlation_id':request.state.correlation_id})
         return JSONResponse(status_code=409,content={'code':'OPERATION_REJECTED','correlation_id':request.state.correlation_id})
 
     @app.exception_handler(UpstreamError)
@@ -140,6 +145,32 @@ def create_app(controller=None):
     async def register(value:NodeRegistration,s=Depends(admin)):
         await s.register_node(value)
         return {'registered':True}
+
+    @app.get('/api/v1/nodes/{node_id}/resources')
+    async def node_resources(node_id:UUID,enabled_protocols:str|None=None,s=Depends(admin)):
+        protocols = enabled_protocols.split(',') if enabled_protocols else [] if enabled_protocols == '' else None
+        if protocols is not None and (len(protocols) != len(set(protocols)) or
+                not set(protocols).issubset({'amneziawg','trusttunnel'})):
+            raise ValueError('Unsupported protocol')
+        return await s.resources.state(node_id,protocols=protocols)
+
+    @app.get('/api/v1/nodes/{node_id}/resources/capabilities')
+    async def node_resource_capabilities(node_id:UUID,s=Depends(admin)):
+        return await s.resources.state(node_id, capabilities_only=True)
+
+    @app.post('/api/v1/nodes/{node_id}/resources/validate')
+    async def validate_node_resources(node_id:UUID,value:NodeDesiredConfig,s=Depends(admin)):
+        if value.node_id != node_id:
+            raise ValueError('Node identity mismatch')
+        return await s.resources.validate(node_id,value)
+
+    @app.put('/api/v1/nodes/{node_id}/resources')
+    async def apply_node_resources(node_id:UUID,value:NodeApplyRequest,s=Depends(admin)):
+        if value.desired.node_id != node_id:
+            raise ValueError('Node identity mismatch')
+        result = await s.resources.apply(node_id,value)
+        s.wakeup.set()
+        return result
 
     @app.get('/api/v1/profiles')
     async def profiles(s=Depends(admin)):

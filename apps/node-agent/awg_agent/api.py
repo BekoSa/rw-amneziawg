@@ -6,7 +6,7 @@ from awg_contracts import (ApplyRequest, DesiredDeployment, ProtocolCapability, 
                           TrustTunnelDesired, TrustTunnelExportRequest, wire_payload)
 
 
-def create_app(service, trusttunnel=None):
+def create_app(service, trusttunnel=None, node_resources=None):
     app = FastAPI(title='AWG Agent', version='1.0', docs_url=None, redoc_url=None)
 
     @app.exception_handler(RequestValidationError)
@@ -77,5 +77,20 @@ def create_app(service, trusttunnel=None):
         def tt_export(identifier: UUID, request: TrustTunnelExportRequest):
             # Management transport mTLS authorization precedes this explicit secret reveal.
             return wire_payload(invoke(trusttunnel.export, identifier, request.peer_id, request.format))
+
+    if node_resources is not None:
+        from awg_contracts import NodeDesiredConfig, NodeApplyRequest
+
+        @app.get('/v1/node/capabilities')
+        def node_capabilities(): return invoke(node_resources.capabilities)
+
+        @app.post('/v1/node/validate')
+        def node_validate(desired: NodeDesiredConfig): return invoke(node_resources.validate, desired)
+
+        @app.put('/v1/node/apply')
+        def node_apply(request: NodeApplyRequest): return invoke(node_resources.apply, request)
+
+        @app.get('/v1/node/state')
+        def node_state(): return invoke(node_resources.state)
 
     return app

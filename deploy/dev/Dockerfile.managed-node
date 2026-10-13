@@ -1,0 +1,6 @@
+FROM awg-dev-agent:local
+ENTRYPOINT []
+COPY packages/contracts /app/packages/contracts
+COPY apps/node-agent/awg_agent /app/awg_agent
+COPY deploy/dev/trusttunnel/managed_server.py /opt/tt-lab/managed_server.py
+COPY --from=awg-tt-pebble:local /test/certs/pebble.minica.pem /opt/tt-lab/pebble-ca.pem

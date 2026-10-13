@@ -7,6 +7,46 @@ network acceptance переносится на isolated runner и остаётс
 
 ## Последовательность и зависимости
 
+### Запрошенные доработки — 2026-10-12
+
+Это план будущей работы, не перечень реализованных возможностей.
+
+1. **TrustTunnel в обычной подписке Throne.** Исправить исключение Throne из
+   capability matching; добавить проверенный renderer для `tt://` в URI/Base64
+   подписках. Целевой сценарий: Throne 1.3.2, TT deployment READY, существующие
+   stock/AWG записи сохраняются. Нужны upstream evidence, golden tests и
+   фактический импорт/подключение клиента в Docker lab.
+2. **Однократная установка универсальной ноды.** После установки управлять
+   включением AWG/TrustTunnel, любыми свободными TCP/UDP-портами и ACME из TUI.
+   Отдельный production ingress принимает публичные соединения; Agent с AWG
+   остаётся в Docker bridge. Ни Docker socket, ни управление host routes/NAT
+   не передаются ingress. Старым нодам нужна одна миграция с сохранением identity,
+   ключей и state. Firewall провайдера вне согласованного scope. Дизайн и
+   контракты должны пройти review до реализации.
+3. **Правила выдачи по приложениям и форматам, аналогично response rules
+   Remnawave.** В TUI разрешать/запрещать AWG и TrustTunnel для выбранных
+   приложений, версий и форматов: URI/Base64, Mihomo, native export и другие
+   подтверждённые renderer capabilities. Отдельный доступ пользователей/squads
+   этим пунктом не изменяется.
+
+   Правила имеют явный порядок, default policy и preview результата для
+   заданного User-Agent/формата. Неизвестная версия не получает неподтверждённый
+   протокол; правило allow не обходит техническую capability-проверку.
+   Одна политика применяется к обычной подписке, provider-запросам, `/info` и
+   native download: запрещённые entries и ссылки не появляются через другой
+   маршрут. Явный deny не должен превращаться в выдачу секрета при outage.
+   Stock auth/HWID/response rules исполняются до enrichment; stock Remnawave
+   сохраняет собственную логику. Блокирование всей stock-подписки, если требуется,
+   нужно отдельно согласовать с поддерживаемыми публичными response rules API,
+   без patches и прямого доступа к stock DB.
+
+   Acceptance: allow/deny/default/order matrix, версии и malformed User-Agent,
+   все поддержанные форматы и маршруты, запрет обхода через provider/native/info,
+   outage behavior, сохранность stock/AWG entries, sanitized diagnostics и
+   независимый security review. Владельцы: architect (контракт), subscription
+   (Gateway/renderers), remnawave_integrator (policy storage/API), ui (TUI),
+   network_qa и reviewer (проверки).
+
 1. Architect фиксирует архитектуру, strict Pydantic models, JSON Schema/OpenAPI,
    contract tests и семантику state/auth/idempotency.
 2. Network QA строит Docker-only tooling и stock lab; проверяет Compose safety,

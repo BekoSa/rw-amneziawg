@@ -61,7 +61,9 @@ class AgentClient:
                 extensions={'sni_hostname': f'{registration.node_id}.agents.awg.internal'})
             if legacy404 and response.status_code == 404:
                 return None
-            if path.startswith('/v1/node/') and response.is_success:
+            # ValidationResult intentionally has no API version fields.
+            # Negotiate versions only for the strict, versioned node models.
+            if model in (NodeCapabilities, NodeActualState) and response.is_success:
                 payload = response.json()
                 if payload.get('api_version') != NODE_API_VERSION or payload.get('protocol_version') != '1.0':
                     raise AgentError('Unsupported node API', 'UNSUPPORTED_NODE_API')

@@ -459,3 +459,44 @@ async def test_private_install_bind_address_is_preserved_for_awg_and_tt_plans():
     assert {binding.backend_role for binding in preview['desired'].bindings} == {'awg','trusttunnel','acme-http'}
     assert {binding.public_address for binding in preview['desired'].bindings} == {'192.168.40.7'}
     assert (await controller.resources.validate(agent.node,preview['desired'])).valid
+
+
+@pytest.mark.asyncio
+async def test_real_agent_client_accepts_unversioned_node_validation_result():
+    import json
+    from awg_contracts.managed_node import NodeDesiredConfig,envelope_digest
+    node = uuid4()
+    registration = NodeRegistration(node_id=node,name='validate',management_url='https://agent.invalid')
+    envelope = NodeInstallEnvelope(node_id=node,envelope_id=uuid4(),backend_ipv4='10.244.0.2')
+    desired = NodeDesiredConfig(node_id=node,revision=1,envelope_digest=envelope_digest(envelope),
+        enabled_protocols=[],bindings=[])
+    result = NodeValidationResult(valid=True,revision=1,digest=node_digest(desired),issues=[])
+    def respond(request):
+        assert request.method == 'POST'
+        assert request.url.path == '/v1/node/validate'
+        assert json.loads(request.content) == desired.model_dump(mode='json')
+        return httpx.Response(200,json=result.model_dump(mode='json'))
+    client = AgentClient.__new__(AgentClient)
+    client.http = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    try:
+        assert await client.node_validate(registration,desired) == result
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('endpoint',['capabilities','state'])
+@pytest.mark.parametrize('version_field',['api_version','protocol_version'])
+async def test_real_agent_client_rejects_unknown_version_on_versioned_node_models(endpoint,version_field):
+    registration = NodeRegistration(node_id=uuid4(),name='unknown',management_url='https://agent.invalid')
+    payload = {'node_id':str(registration.node_id),'api_version':'node.remnawave-extension.io/v1',
+               'protocol_version':'1.0'}
+    payload[version_field] = 'unknown'
+    client = AgentClient.__new__(AgentClient)
+    client.http = httpx.AsyncClient(transport=httpx.MockTransport(lambda request:httpx.Response(200,json=payload)))
+    try:
+        with pytest.raises(AgentError) as caught:
+            await getattr(client,'node_'+endpoint)(registration)
+        assert caught.value.reason == 'UNSUPPORTED_NODE_API'
+    finally:
+        await client.close()

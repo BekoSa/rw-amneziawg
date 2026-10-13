@@ -5,10 +5,10 @@ host не запускался. Stock Remnawave backend/Node/Xray/DB не изм
 
 Локальные результаты:
 
-- Общий unit/contract/golden/DB/TUI suite: 510 passed, 3 skipped, 17 network
+- Общий unit/contract/golden/DB/TUI suite: 515 passed, 3 skipped, 17 network
   deselected. Ownership/enrollment отдельно с минимальными необходимыми
   capabilities: 18 passed.
-- Agent/contract suite: 163 passed, 3 ownership skipped; Controller: 57 passed.
+- Agent/contract suite: 163 passed, 3 ownership skipped; Controller: 62 passed.
 - Installer/provisioning: 16 passed. Проверены rollback, PKI/identity preservation,
   immutable envelope/secret/subnet и отсутствие вытеснения чужого backend address.
   Rollback использует сохранённые immutable image IDs. Повторная миграция сначала
@@ -38,6 +38,11 @@ host не запускался. Stock Remnawave backend/Node/Xray/DB не изм
 - TT lab был пересобран с текущим runtime; failure-injection wrapper теперь
   передаёт новые keyword arguments. Повтор на свежем образе: 7 passed, 167.82 s,
   `artifacts/trusttunnel-run-20261013T215024-69622`.
+- CI на `a101212` прошёл обычный AWG/installer, TT/Throne и managed TT, но
+  выявил ошибку Controller transport: unversioned NodeValidationResult проверялся
+  как versioned envelope. Guard теперь применяется только к NodeCapabilities и
+  NodeActualState; реальные HTTP mock regressions проверяют validation и отказ
+  неизвестных версий. После исправления общий suite: 515 passed.
 
 Реальный AWG через новый UDP relay проверяет отдельный `managed-awg` CI job с
 готовым TUN; локальный development host не имеет TUN, он не создавался.

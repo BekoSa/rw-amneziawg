@@ -238,3 +238,29 @@ def test_bootstrap_preserves_private_awg_bind_address(tmp_path):
     ingress=Ingress(c,envelope.node_id);r=m.NodeResourceService(tmp_path/'resources',envelope,ingress,awg=agent)
     assert r.bootstrap_resources().bindings[0].binding.public_address=='10.245.0.2'
     agent.close();r.close()
+
+
+def test_fresh_managed_node_state_and_empty_bootstrap_are_draft(tmp_path):
+    c,m=modules();envelope,_=plan(c);ingress=Ingress(c,envelope.node_id)
+    r=m.NodeResourceService(tmp_path,envelope,ingress)
+    for state in (r.state(),r.bootstrap_resources()):
+        assert state.state=='DRAFT'
+        assert state.error is None and not state.healthy
+        assert state.applied_revision is None and state.applied_digest is None
+    assert not r.path.exists() and ingress.commits==0
+    r.close()
+
+
+def test_managed_awg_capabilities_match_installed_runtime(tmp_path):
+    c,m=modules()
+    from awg_agent.service import AgentService
+    from tests.unit.agent.test_agent import Runtime
+    envelope,_=plan(c);r=m.NodeResourceService(tmp_path/'resources',envelope,Ingress(c,envelope.node_id))
+    agent=AgentService(tmp_path/'awg',envelope.node_id,Runtime());r.bind_services(agent)
+    ordinary=agent.capabilities().protocols[0]
+    managed=r.capabilities().installed_protocols[0]
+    assert managed.adapter_id==ordinary.adapter_id
+    assert managed.versions==ordinary.versions
+    assert set(ordinary.features).issubset(managed.features)
+    assert 'managed-ingress' in managed.features
+    agent.close();r.close()

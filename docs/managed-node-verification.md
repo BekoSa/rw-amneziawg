@@ -5,10 +5,10 @@ host не запускался. Stock Remnawave backend/Node/Xray/DB не изм
 
 Локальные результаты:
 
-- Общий unit/contract/golden/DB/TUI suite: 507 passed, 3 skipped, 17 network
+- Общий unit/contract/golden/DB/TUI suite: 510 passed, 3 skipped, 17 network
   deselected. Ownership/enrollment отдельно с минимальными необходимыми
   capabilities: 18 passed.
-- Agent/contract suite: 161 passed, 3 ownership skipped; Controller: 57 passed.
+- Agent/contract suite: 163 passed, 3 ownership skipped; Controller: 57 passed.
 - Installer/provisioning: 16 passed. Проверены rollback, PKI/identity preservation,
   immutable envelope/secret/subnet и отсутствие вытеснения чужого backend address.
   Rollback использует сохранённые immutable image IDs. Повторная миграция сначала
@@ -31,6 +31,13 @@ host не запускался. Stock Remnawave backend/Node/Xray/DB не изм
 - Итоговый общий TrustTunnel/Throne lab: 7 passed, 161.38 s; cleanup и
   host VPN/interfaces/routes/rules comparison PASS.
   `artifacts/trusttunnel-run-20261013T212527-49138`.
+- CI на `4d321fa` выявил ошибку свежего managed bootstrap: пустые revision/digest
+  ошибочно считались подтверждёнными. Исправление сохраняет DRAFT до commit;
+  regression и общий suite прошли. Capabilities совпадают установленному adapter.
+  Обычный AWG прошёл восемь E2E-фаз и installer в этом CI run.
+- TT lab был пересобран с текущим runtime; failure-injection wrapper теперь
+  передаёт новые keyword arguments. Повтор на свежем образе: 7 passed, 167.82 s,
+  `artifacts/trusttunnel-run-20261013T215024-69622`.
 
 Реальный AWG через новый UDP relay проверяет отдельный `managed-awg` CI job с
 готовым TUN; локальный development host не имеет TUN, он не создавался.

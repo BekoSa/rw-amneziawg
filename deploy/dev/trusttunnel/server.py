@@ -71,8 +71,8 @@ def action(path, body):
         if service:
             service.close()
         # Failure injection at real HTTP frontend; TLS listener and actual CA stay live.
-        def ingress_config(*args):
-            config = normal_ingress_config(*args)
+        def ingress_config(*args, **kwargs):
+            config = normal_ingress_config(*args, **kwargs)
             if body.get('http_failure'):
                 config = config.replace('  default_backend acme_http',
                     '  http-request return status 503\n  default_backend acme_http')

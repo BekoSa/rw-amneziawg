@@ -11,7 +11,7 @@
 **Spec:** `docs/superpowers/specs/2026-10-12-managed-node-design.md`.
 
 **Execution status 2026-10-13:** Tasks 1–5 implemented and independently reviewed;
-unit/contract/golden/DB/TUI aggregate 507 passed. Managed bridge TT/ACME network
+unit/contract/golden/DB/TUI aggregate 510 passed. Managed bridge TT/ACME network
 scenario passed; managed AWG eight-phase harness is ready for the prepared CI
 runner. Official Throne 1.3.2 GUI import/TLS/TCP/UDP passed both URI/Base64 scenarios.
 Production host-network runtime was not executed on the development host.

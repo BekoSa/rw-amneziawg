@@ -11,6 +11,7 @@ from awg_contracts import (NodeCapabilities, NodeDesiredConfig, NodeApplyRequest
     IngressCommitRequest, IngressBinding, node_digest, envelope_digest, validate_node_envelope)
 from .certificates import atomic_write
 from .ingress_client import IngressError
+from awg_config import ADAPTER_ID, FEATURES, VERSIONS
 
 
 class NodeResourceService:
@@ -41,7 +42,8 @@ class NodeResourceService:
         atomic_write(self.path, json.dumps(self.record,sort_keys=True))
 
     def capabilities(self):
-        protocols = [ProtocolCapability(adapter_id='amneziawg-go-v3',versions=['2'],features=['managed-ingress'])]
+        protocols = [ProtocolCapability(adapter_id=ADAPTER_ID,versions=VERSIONS,
+                                        features=[*FEATURES,'managed-ingress'])]
         if self.trusttunnel is not None:
             protocols.append(ProtocolCapability(adapter_id='trusttunnel',versions=['1.0'],features=['managed-ingress']))
         return NodeCapabilities(node_id=self.envelope.node_id,envelope=self.envelope,installed_protocols=protocols)
@@ -117,7 +119,9 @@ class NodeResourceService:
                 return self._actual(error=ValidationIssue(code=code,message='Node ingress apply failed'))
 
     def _actual(self, observed=None,error=None):
-        ready=bool(observed and self.record.get('accepted_revision')==self.record.get('committed_revision')
+        ready=bool(observed and self.record.get('committed_revision') is not None
+                   and self.record.get('committed_digest') is not None
+                   and self.record.get('accepted_revision')==self.record.get('committed_revision')
                    and self.record.get('committed_digest')==observed.applied_digest
                    and self.record.get('committed_revision')==observed.applied_revision)
         bindings=[]

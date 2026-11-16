@@ -7,7 +7,7 @@ AmneziaWG. Stock Remnawave и его БД не используются.
 
 Образ собирается `apps/node-agent/Dockerfile`. В исходнике закреплены:
 
-- [amneziawg-go v3.1.20260828](https://github.com/amnezia-vpn/amneziawg-go/tree/b5928efb6ca19f0153958460c3d141f04abc5c2e);
+- [amneziawg-go v3.1.20261116](https://github.com/amnezia-vpn/amneziawg-go/tree/08fe3d33bbb116be09a6183d02609311b8b0c9e8);
 - [amneziawg-tools v3.1.20260812](https://github.com/amnezia-vpn/amneziawg-tools/tree/ee0f0a9aa34ff0a0da4b3433b9512781cfe02843).
 
 Версии закреплены в `ARG AWG_GO_*` / `ARG AWG_TOOLS_*` Dockerfile (тег + коммит) и попадают в
